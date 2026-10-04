@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { authService } from '@/services/authService'
+import { supabase } from '@/supabase/client'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,9 +17,21 @@ export default function LoginPage() {
     setError('')
 
     try {
-      await authService.signIn(email, password)
+      console.log('Attempting login with:', email)
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        console.error('Login error:', error)
+        throw error
+      }
+
+      console.log('Login successful:', data)
       router.push('/dashboard')
     } catch (err: any) {
+      console.error('Login failed:', err)
       setError(err.message || 'Error al iniciar sesión')
     } finally {
       setLoading(false)
@@ -82,12 +94,19 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
             <a
               href="/auth/reset-password"
               className="text-sm text-blue-600 hover:text-blue-500"
             >
               ¿Olvidaste tu contraseña?
+            </a>
+            <br />
+            <a
+              href="/auth/signup"
+              className="text-sm text-blue-600 hover:text-blue-500"
+            >
+              ¿No tienes cuenta? Regístrate
             </a>
           </div>
         </form>
