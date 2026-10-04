@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/supabase/client'
 
@@ -10,11 +10,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [supabaseReady, setSupabaseReady] = useState(false)
+
+  useEffect(() => {
+    // Check if Supabase is initialized
+    if (supabase) {
+      console.log('Supabase client initialized')
+      setSupabaseReady(true)
+    } else {
+      console.error('Supabase client not initialized')
+      setError('Error: Supabase no está configurado. Verifica las variables de entorno.')
+    }
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+
+    if (!supabase) {
+      setError('Error: Supabase no está configurado')
+      setLoading(false)
+      return
+    }
 
     try {
       console.log('Attempting login with:', email)
@@ -49,6 +67,13 @@ export default function LoginPage() {
             Inicia sesión en tu cuenta
           </p>
         </div>
+        
+        {!supabaseReady && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
+            Verificando configuración de Supabase...
+          </div>
+        )}
+
         <form className="mt-8 space-y-6" onSubmit={handleLogin}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
@@ -87,7 +112,7 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !supabaseReady}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
             >
               {loading ? 'Iniciando sesión...' : 'Iniciar sesión'}
