@@ -49,10 +49,10 @@ export default function LoginPage() {
         setMessage('¡Login exitoso! Redirigiendo...')
         
         // Wait a moment for session to be set
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 1000))
         
-        // Use router.push instead of window.location
-        router.push('/dashboard')
+        // Use window.location.replace for hard redirect
+        window.location.replace('/dashboard')
       } else {
         setError('No se pudo iniciar sesión')
         setLoading(false)
