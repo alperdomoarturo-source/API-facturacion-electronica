@@ -142,6 +142,16 @@ export default function LoginPage() {
             >
               ¿No tienes cuenta? Regístrate
             </a>
+            <br />
+            <br />
+            {message && (
+              <a
+                href="/dashboard"
+                className="text-sm font-medium text-green-600 hover:text-green-500 underline"
+              >
+                Ir al Dashboard (si iniciaste sesión)
+              </a>
+            )}
           </div>
         </form>
       </div>
