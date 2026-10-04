@@ -41,13 +41,18 @@ export default function LoginPage() {
         password,
       })
 
+      console.log('Auth response:', { data, error })
+
       if (error) {
         console.error('Login error:', error)
         throw error
       }
 
-      console.log('Login successful:', data)
-      router.push('/dashboard')
+      console.log('Login successful, user:', data.user)
+      console.log('Session:', data.session)
+      
+      // Force page reload to ensure session is set
+      window.location.href = '/dashboard'
     } catch (err: any) {
       console.error('Login failed:', err)
       setError(err.message || 'Error al iniciar sesión')
