@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/supabase/client'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -13,53 +11,48 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
-    console.log('=== Login attempt started ===')
     e.preventDefault()
     setLoading(true)
     setError('')
     setMessage('')
 
     try {
-      console.log('Email:', email)
-      console.log('Password length:', password.length)
-      
       if (!email || !password) {
         setError('Por favor completa todos los campos')
         setLoading(false)
         return
       }
 
-      console.log('Calling Supabase auth...')
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
-      console.log('Auth result:', { data, error })
-
-      if (error) {
-        console.error('Auth error:', error)
-        setError(error.message || 'Error al iniciar sesión')
+      if (authError) {
+        setError(authError.message || 'Error al iniciar sesión')
         setLoading(false)
         return
       }
 
-      if (data?.user) {
-        console.log('Login successful!')
-        setMessage('¡Login exitoso! Redirigiendo...')
-        
-        // Wait a moment for session to be set
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // Use window.location.replace for hard redirect
-        window.location.replace('/dashboard')
-      } else {
+      if (!data.user) {
         setError('No se pudo iniciar sesión')
         setLoading(false)
+        return
       }
-    } catch (err: any) {
-      console.error('Unexpected error:', err)
-      setError(err.message || 'Error inesperado al iniciar sesión')
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('user_id', data.user.id)
+        .maybeSingle()
+
+      setMessage('¡Login exitoso! Redirigiendo...')
+
+      const destination = profile?.role === 'CASHIER' ? '/pos' : '/dashboard'
+      window.location.assign(destination)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error inesperado al iniciar sesión'
+      setError(message)
       setLoading(false)
     }
   }
@@ -142,16 +135,6 @@ export default function LoginPage() {
             >
               ¿No tienes cuenta? Regístrate
             </a>
-            <br />
-            <br />
-            {message && (
-              <a
-                href="/dashboard"
-                className="text-sm font-medium text-green-600 hover:text-green-500 underline"
-              >
-                Ir al Dashboard (si iniciaste sesión)
-              </a>
-            )}
           </div>
         </form>
       </div>

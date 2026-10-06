@@ -12,16 +12,15 @@ export function useAuth() {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
       setUser(user)
       if (user) {
-        // Fetch profile
-        supabase
+        const { data } = await supabase
           .from('profiles')
           .select('*')
           .eq('user_id', user.id)
-          .single()
-          .then(({ data }) => setProfile(data))
+          .maybeSingle()
+        setProfile(data)
       }
       setLoading(false)
     })
@@ -36,7 +35,7 @@ export function useAuth() {
           .from('profiles')
           .select('*')
           .eq('user_id', session.user.id)
-          .single()
+          .maybeSingle()
         setProfile(data)
       } else {
         setProfile(null)

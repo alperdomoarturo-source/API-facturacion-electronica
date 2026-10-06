@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 
 export default function DashboardPage() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, loading: authLoading } = useAuth()
   const [stats, setStats] = useState({
     todaySales: 0,
     monthSales: 0,
@@ -76,6 +76,14 @@ export default function DashboardPage() {
       currency: 'COP',
       minimumFractionDigits: 0,
     }).format(value)
+  }
+
+  if (authLoading) {
+    return (
+      <div className="p-8">
+        <p className="text-gray-600">Cargando...</p>
+      </div>
+    )
   }
 
   if (!isAdmin) {

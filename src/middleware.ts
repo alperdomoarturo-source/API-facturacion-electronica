@@ -3,11 +3,20 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !anonKey) {
+    return NextResponse.next({ request: req })
+  }
+
+  let res = NextResponse.next({
+    request: req,
+  })
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonKey,
     {
       cookies: {
         getAll() {
@@ -15,7 +24,13 @@ export async function middleware(req: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => {
-            res.cookies.set(name, value)
+            req.cookies.set(name, value)
+          })
+          res = NextResponse.next({
+            request: req,
+          })
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res.cookies.set(name, value, options)
           })
         },
       },
@@ -23,20 +38,43 @@ export async function middleware(req: NextRequest) {
   )
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  // Protected routes
-  const protectedPaths = ['/dashboard', '/pos', '/sales', '/invoicing', '/customers', '/menu', '/inventory', '/purchases', '/suppliers', '/cash', '/expenses', '/accounts-receivable', '/accounts-payable', '/reports', '/accounting', '/users', '/settings']
-  const isProtectedPath = protectedPaths.some(path => req.nextUrl.pathname.startsWith(path))
+  const pathname = req.nextUrl.pathname
+  const isAuthPage = pathname.startsWith('/auth/')
+  const protectedPaths = [
+    '/dashboard',
+    '/pos',
+    '/sales',
+    '/invoicing',
+    '/customers',
+    '/menu',
+    '/inventory',
+    '/purchases',
+    '/suppliers',
+    '/cash',
+    '/expenses',
+    '/accounts-receivable',
+    '/accounts-payable',
+    '/reports',
+    '/accounting',
+    '/users',
+    '/settings',
+    '/recipes',
+  ]
+  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path))
 
-  if (isProtectedPath && !session) {
-    return NextResponse.redirect(new URL('/auth/login', req.url))
+  if (isProtectedPath && !user) {
+    const redirectUrl = req.nextUrl.clone()
+    redirectUrl.pathname = '/auth/login'
+    return NextResponse.redirect(redirectUrl)
   }
 
-  // Redirect authenticated users away from login
-  if (req.nextUrl.pathname === '/auth/login' && session) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
+  if (isAuthPage && user && pathname !== '/auth/reset-password') {
+    const redirectUrl = req.nextUrl.clone()
+    redirectUrl.pathname = '/'
+    return NextResponse.redirect(redirectUrl)
   }
 
   return res
