@@ -1,11 +1,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { jsPDF } from 'jspdf'
 import { useAuth } from '@/hooks/useAuth'
 import { invoiceService } from '@/services/invoiceService'
 import { dianService } from '@/services/dianService'
-import { Invoice } from '@/types'
+import { supabase } from '@/supabase/client'
+import { Invoice, Restaurant } from '@/types'
 import { FileText, CheckCircle, XCircle, Clock, Settings, Download, Send, Search } from 'lucide-react'
+
+const paymentLabels: Record<string, string> = {
+  cash: 'Efectivo',
+  debit_card: 'Débito',
+  credit_card: 'Tarjeta',
+  transfer: 'Transferencia',
+  nequi: 'Nequi',
+  other: 'Otro',
+}
 
 export default function InvoicingPage() {
   const { isAdmin, isCashier } = useAuth()
@@ -15,11 +26,19 @@ export default function InvoicingPage() {
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [showConfigModal, setShowConfigModal] = useState(false)
   const [config, setConfig] = useState<any>(null)
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchInvoices()
     fetchConfig()
+    fetchRestaurant()
   }, [])
+
+  const fetchRestaurant = async () => {
+    const { data } = await supabase.from('restaurant').select('*').maybeSingle()
+    setRestaurant(data as Restaurant | null)
+  }
 
   const fetchInvoices = async () => {
     try {
@@ -83,7 +102,169 @@ export default function InvoicingPage() {
   }
 
   const handleDownloadPDF = async (invoice: Invoice) => {
-    alert('Funcionalidad de descarga de PDF en desarrollo. Requiere generación de documento PDF.')
+    setDownloadingId(invoice.id)
+    try {
+      const full = await invoiceService.getInvoice(invoice.id)
+      if (!full) {
+        alert('No se pudo obtener el detalle de la factura.')
+        return
+      }
+
+      const sale: any = full.sales || {}
+      const customer: any = full.customers || {}
+      const items: any[] = sale.sale_items || []
+
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const margin = 40
+      const right = pageWidth - margin
+      let y = 50
+
+      // Encabezado: datos del restaurante
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(16)
+      doc.text(restaurant?.name || 'Factura de Venta', margin, y)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      const companyLines = [
+        restaurant?.nit ? `NIT: ${restaurant.nit}` : '',
+        restaurant?.address || '',
+        [restaurant?.city, restaurant?.phone ? `Tel: ${restaurant.phone}` : ''].filter(Boolean).join(' - '),
+        restaurant?.email || '',
+      ].filter(Boolean)
+      companyLines.forEach((line) => {
+        y += 13
+        doc.text(line, margin, y)
+      })
+
+      // Caja superior derecha: tipo y número de documento
+      const boxW = 210
+      const boxX = right - boxW
+      doc.setDrawColor(200)
+      doc.rect(boxX, 40, boxW, 58)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(11)
+      doc.text('FACTURA DE VENTA', right - 12, 58, { align: 'right' })
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      doc.text(`N°: ${full.invoice_number}`, right - 12, 76, { align: 'right' })
+      doc.text(
+        `Fecha: ${new Date(full.created_at).toLocaleDateString('es-CO')}`,
+        right - 12,
+        90,
+        { align: 'right' }
+      )
+
+      y = Math.max(y, 110) + 24
+
+      // Datos del cliente
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      doc.text('CLIENTE', margin, y)
+      y += 4
+      doc.setDrawColor(220)
+      doc.line(margin, y, right, y)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      y += 16
+      const docType = customer.document_type ? `${customer.document_type}: ` : ''
+      doc.text(`Nombre: ${customer.name || 'Cliente'}`, margin, y)
+      doc.text(`${docType}${customer.document_number || ''}`, right, y, { align: 'right' })
+      y += 15
+      if (customer.email || customer.phone) {
+        doc.text(customer.email || '', margin, y)
+        doc.text(customer.phone || '', right, y, { align: 'right' })
+        y += 15
+      }
+      if (customer.address) {
+        doc.text(`Dirección: ${customer.address}`, margin, y)
+        y += 15
+      }
+      if (sale.payment_method) {
+        doc.text(`Medio de pago: ${paymentLabels[sale.payment_method] || sale.payment_method}`, margin, y)
+        y += 15
+      }
+
+      y += 10
+
+      // Tabla de ítems
+      const colQty = margin
+      const colDesc = margin + 45
+      const colUnit = right - 150
+      const colTotal = right
+      const headerY = y
+      doc.setFillColor(243, 244, 246)
+      doc.rect(margin, headerY - 12, right - margin, 20, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.text('CANT', colQty, headerY + 2)
+      doc.text('DESCRIPCIÓN', colDesc, headerY + 2)
+      doc.text('V. UNITARIO', colUnit, headerY + 2, { align: 'right' })
+      doc.text('TOTAL', colTotal, headerY + 2, { align: 'right' })
+      y = headerY + 20
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      items.forEach((item) => {
+        if (y > 720) {
+          doc.addPage()
+          y = 50
+        }
+        const name = item.products?.name || 'Producto'
+        const desc = doc.splitTextToSize(name, colUnit - colDesc - 20)
+        doc.text(String(item.quantity), colQty, y)
+        doc.text(desc, colDesc, y)
+        doc.text(formatCurrency(Number(item.unit_price || 0)), colUnit, y, { align: 'right' })
+        doc.text(formatCurrency(Number(item.total || 0)), colTotal, y, { align: 'right' })
+        y += Math.max(15, desc.length * 12)
+      })
+
+      // Totales
+      const subtotal = Number(sale.subtotal || 0)
+      const tax = Number(sale.tax || 0)
+      const discount = Number(sale.discount || 0)
+      const total = Number(sale.total || subtotal + tax)
+      y += 8
+      doc.setDrawColor(220)
+      doc.line(colUnit - 10, y, right, y)
+      const totalRows: Array<[string, string]> = [['Subtotal', formatCurrency(subtotal)]]
+      if (discount > 0) totalRows.push(['Descuento', `- ${formatCurrency(discount)}`])
+      totalRows.push(['IVA (19%)', formatCurrency(tax)])
+      doc.setFontSize(10)
+      totalRows.forEach(([label, value]) => {
+        y += 16
+        doc.setFont('helvetica', 'normal')
+        doc.text(label, colUnit - 10, y)
+        doc.text(value, colTotal, y, { align: 'right' })
+      })
+      y += 20
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(12)
+      doc.text('TOTAL', colUnit - 10, y)
+      doc.text(formatCurrency(total), colTotal, y, { align: 'right' })
+
+      // Pie: resolución DIAN y CUFE
+      const footerLines = [
+        config?.resolution_number
+          ? `Resolución DIAN N° ${config.resolution_number} (${config.prefix || full.prefix})`
+          : '',
+        full.cufe ? `CUFE: ${full.cufe}` : '',
+        'Representación gráfica de la factura electrónica.',
+      ].filter(Boolean)
+      const footerStart = Math.max(y + 30, 760)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(8)
+      footerLines.forEach((line, i) => {
+        doc.text(line, margin, footerStart + i * 11)
+      })
+
+      doc.save(`Factura-${full.invoice_number}.pdf`)
+    } catch (error: any) {
+      console.error('Error generating invoice PDF:', error)
+      alert(error?.message || 'No se pudo generar el PDF de la factura.')
+    } finally {
+      setDownloadingId(null)
+    }
   }
 
   const handleSendEmail = async (invoice: Invoice) => {
@@ -253,7 +434,8 @@ export default function InvoicingPage() {
                   <div className="flex items-center justify-end space-x-2">
                     <button
                       onClick={() => handleDownloadPDF(invoice)}
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                      disabled={downloadingId === invoice.id}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
                       title="Descargar PDF"
                     >
                       <Download className="w-4 h-4" />
