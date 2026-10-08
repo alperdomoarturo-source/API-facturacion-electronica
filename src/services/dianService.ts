@@ -13,10 +13,20 @@ export const dianService = {
   },
 
   async updateConfig(config: Partial<ElectronicInvoicingConfig>) {
+    const { data: current } = await supabase
+      .from('electronic_invoicing_config')
+      .select('id')
+      .maybeSingle()
+
+    const configId = config.id || current?.id
+    if (!configId) {
+      throw new Error('No hay una configuración para actualizar')
+    }
+
     const { data, error } = await supabase
       .from('electronic_invoicing_config')
       .update(config)
-      .eq('id', config.id)
+      .eq('id', configId)
       .select()
       .single()
 

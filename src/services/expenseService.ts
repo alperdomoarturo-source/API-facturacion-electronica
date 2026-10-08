@@ -7,7 +7,6 @@ export const expenseService = {
       .from('expenses')
       .select(`
         *,
-        profiles (full_name),
         suppliers (*)
       `)
       .order('date', { ascending: false })
@@ -33,7 +32,6 @@ export const expenseService = {
       .from('expenses')
       .select(`
         *,
-        profiles (full_name),
         suppliers (*)
       `)
       .eq('id', id)

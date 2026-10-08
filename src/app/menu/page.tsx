@@ -54,7 +54,7 @@ export default function MenuPage() {
   if (!isAdmin) {
     return (
       <div className="p-8">
-        <div className="bg-red-50 bsort_order bsort_order-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           Acceso denegado. Solo los administradores pueden gestionar el menú.
         </div>
       </div>
@@ -117,13 +117,13 @@ export default function MenuPage() {
               placeholder="Buscar productos..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <select
             value={selectedCategory || ''}
             onChange={(e) => setSelectedCategory(e.target.value || null)}
-            className="px-4 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todas las categorías</option>
             {categories.map((category) => (
@@ -277,7 +277,7 @@ function ProductModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
-        <div className="p-6 bsort_order-b">
+        <div className="p-6 border-b">
           <h2 className="text-xl font-bold text-gray-900">
             {product ? 'Editar Producto' : 'Nuevo Producto'}
           </h2>
@@ -292,7 +292,7 @@ function ProductModal({
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -303,7 +303,7 @@ function ProductModal({
               required
               value={formData.category_id}
               onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccionar categoría</option>
               {categories.map((category) => (
@@ -325,7 +325,7 @@ function ProductModal({
                 step="100"
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -339,7 +339,7 @@ function ProductModal({
                 step="100"
                 value={formData.cost}
                 onChange={(e) => setFormData({ ...formData, cost: Number(e.target.value) })}
-                className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -351,7 +351,7 @@ function ProductModal({
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -362,7 +362,7 @@ function ProductModal({
               type="url"
               value={formData.image_url}
               onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex items-center">
@@ -371,7 +371,7 @@ function ProductModal({
               id="active"
               checked={formData.active}
               onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-              className="w-4 h-4 text-blue-600 bsort_order-gray-300 rounded focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
             <label htmlFor="active" className="ml-2 text-sm text-gray-700">
               Producto activo
@@ -381,7 +381,7 @@ function ProductModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bsort_order bsort_order-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancelar
             </button>
@@ -432,7 +432,7 @@ function CategoryModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-        <div className="p-6 bsort_order-b">
+        <div className="p-6 border-b">
           <h2 className="text-xl font-bold text-gray-900">
             {category ? 'Editar Categoría' : 'Nueva Categoría'}
           </h2>
@@ -447,7 +447,7 @@ function CategoryModal({
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -458,7 +458,7 @@ function CategoryModal({
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -471,7 +471,7 @@ function CategoryModal({
               min="0"
               value={formData.sort_order}
               onChange={(e) => setFormData({ ...formData, sort_order: Number(e.target.value) })}
-              className="w-full px-3 py-2 bsort_order bsort_order-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div className="flex items-center">
@@ -480,7 +480,7 @@ function CategoryModal({
               id="active"
               checked={formData.active}
               onChange={(e) => setFormData({ ...formData, active: e.target.checked })}
-              className="w-4 h-4 text-blue-600 bsort_order-gray-300 rounded focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
             <label htmlFor="active" className="ml-2 text-sm text-gray-700">
               Categoría activa
@@ -490,7 +490,7 @@ function CategoryModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bsort_order bsort_order-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               Cancelar
             </button>

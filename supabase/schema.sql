@@ -399,12 +399,28 @@ CREATE OR REPLACE FUNCTION update_stock(
   user_id UUID
 )
 RETURNS VOID AS $$
+DECLARE
+  inv RECORD;
 BEGIN
-  -- Update inventory
-  UPDATE inventory
-  SET current_stock = current_stock + quantity,
-      last_updated = NOW()
-  WHERE ingredient_id = update_stock.ingredient_id;
+  -- Check if inventory record exists
+  SELECT * INTO inv FROM inventory WHERE ingredient_id = update_stock.ingredient_id;
+
+  IF FOUND THEN
+    -- Update existing inventory
+    UPDATE inventory
+    SET current_stock = current_stock + quantity,
+        last_updated = NOW()
+    WHERE ingredient_id = update_stock.ingredient_id;
+  ELSE
+    -- Get ingredient info to create inventory record
+    INSERT INTO inventory (ingredient_id, current_stock, min_stock, unit_cost, last_updated)
+    SELECT
+      update_stock.ingredient_id,
+      quantity,
+      0,
+      (SELECT unit_cost FROM ingredients WHERE id = update_stock.ingredient_id),
+      NOW();
+  END IF;
 
   -- Record movement
   INSERT INTO inventory_movements (ingredient_id, quantity, type, user_id)
@@ -733,6 +749,18 @@ CREATE POLICY "Cashiers can view own invoices" ON invoices
     )
   );
 
+CREATE POLICY "Cashiers can insert own invoices" ON invoices
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM sales
+      WHERE sales.id = invoices.sale_id
+      AND sales.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "System can insert invoices" ON invoices
+  FOR INSERT WITH CHECK (true);
+
 -- Invoice items policies
 CREATE POLICY "Admins can view all invoice items" ON invoice_items
   FOR SELECT USING (
@@ -742,6 +770,22 @@ CREATE POLICY "Admins can view all invoice items" ON invoice_items
       AND profiles.role = 'ADMIN'
     )
   );
+
+CREATE POLICY "Cashiers can view own invoice items" ON invoice_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM invoices
+      WHERE invoices.id = invoice_items.invoice_id
+      AND EXISTS (
+        SELECT 1 FROM sales
+        WHERE sales.id = invoices.sale_id
+        AND sales.user_id = auth.uid()
+      )
+    )
+  );
+
+CREATE POLICY "System can insert invoice items" ON invoice_items
+  FOR INSERT WITH CHECK (true);
 
 -- Credit notes policies (admin only)
 CREATE POLICY "Admins can manage credit notes" ON credit_notes

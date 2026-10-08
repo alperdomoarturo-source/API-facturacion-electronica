@@ -8,7 +8,6 @@ export const salesService = {
       .select(`
         *,
         customers (*),
-        profiles (full_name),
         sale_items (
           *,
           products (*)
@@ -35,7 +34,6 @@ export const salesService = {
       .select(`
         *,
         customers (*),
-        profiles (full_name),
         sale_items (
           *,
           products (*)
@@ -56,10 +54,10 @@ export const salesService = {
     cashRegisterId?: string,
     discount: number = 0
   ) {
-    // Calculate totals
     const subtotal = cartItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0)
-    const total = subtotal - discount
-    const tax = total * 0.19 // Default 19% IVA (should be configurable)
+    const taxable = Math.max(subtotal - discount, 0)
+    const tax = taxable * 0.19
+    const total = taxable + tax
 
     // Create sale
     const { data: sale, error: saleError } = await supabase
@@ -106,7 +104,7 @@ export const salesService = {
           )
         `)
         .eq('product_id', cartItem.product.id)
-        .single()
+        .maybeSingle()
 
       if (recipe) {
         for (const recipeItem of recipe.recipe_items) {

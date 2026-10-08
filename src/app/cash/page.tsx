@@ -7,7 +7,7 @@ import { CashRegister, CashMovement } from '@/types'
 import { DollarSign, TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, Clock, User } from 'lucide-react'
 
 export default function CashPage() {
-  const { isAdmin, isCashier, profile } = useAuth()
+  const { isAdmin, isCashier, profile, loading: authLoading } = useAuth()
   const [openRegister, setOpenRegister] = useState<CashRegister | null>(null)
   const [registerHistory, setRegisterHistory] = useState<CashRegister[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,8 +20,13 @@ export default function CashPage() {
   const [registerSummary, setRegisterSummary] = useState<any>(null)
 
   useEffect(() => {
+    if (authLoading) return
+    if (!profile?.user_id) {
+      setLoading(false)
+      return
+    }
     fetchData()
-  }, [])
+  }, [profile?.user_id, authLoading])
 
   const fetchData = async () => {
     try {

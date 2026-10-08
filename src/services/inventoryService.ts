@@ -107,8 +107,7 @@ export const inventoryService = {
       .from('inventory_movements')
       .select(`
         *,
-        ingredients (*),
-        profiles (full_name)
+        ingredients (*)
       `)
       .order('created_at', { ascending: false })
 

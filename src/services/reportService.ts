@@ -32,8 +32,6 @@ export const reportService = {
         total,
         products (name)
       `)
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
 
     if (error) throw error
 
@@ -51,21 +49,17 @@ export const reportService = {
 
   async getInventoryStats() {
     const { data, error } = await supabase
-      .from('inventory')
-      .select(`
-        current_stock,
-        min_stock,
-        ingredients (name, unit_cost)
-      `)
+      .from('ingredients')
+      .select('name, current_stock, min_stock, unit_cost')
 
     if (error) throw error
 
     const totalValue = data?.reduce((sum: number, item: any) => {
-      return sum + (item.current_stock * (item.ingredients?.unit_cost || 0))
+      return sum + (Number(item.current_stock || 0) * Number(item.unit_cost || 0))
     }, 0) || 0
 
-    const lowStock = data?.filter(item => item.current_stock < item.min_stock).length || 0
-    const outOfStock = data?.filter(item => item.current_stock === 0).length || 0
+    const lowStock = data?.filter(item => Number(item.current_stock) < Number(item.min_stock)).length || 0
+    const outOfStock = data?.filter(item => Number(item.current_stock) === 0).length || 0
 
     return {
       totalValue,
@@ -147,7 +141,7 @@ export const reportService = {
   async getInvoiceStats(startDate: string, endDate: string) {
     const { data, error } = await supabase
       .from('invoices')
-      .select('status, total')
+      .select('status')
       .gte('created_at', startDate)
       .lte('created_at', endDate)
 

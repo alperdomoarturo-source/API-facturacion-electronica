@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { productService } from '@/services/productService'
 import { customerService } from '@/services/customerService'
-import { CartItem, Product, Customer } from '@/types'
+import { salesService } from '@/services/salesService'
+import { invoiceService } from '@/services/invoiceService'
+import { cashService } from '@/services/cashService'
+import { CartItem, Product, Customer, Category, Sale } from '@/types'
 import { ShoppingCart, Search, Plus, Minus, CreditCard, DollarSign, Smartphone, FileText } from 'lucide-react'
 
 export default function POSPage() {
-  const { isAdmin, isCashier } = useAuth()
+  const { isAdmin, isCashier, user, loading: authLoading } = useAuth()
   const [cart, setCart] = useState<CartItem[]>([])
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -16,89 +19,29 @@ export default function POSPage() {
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
-
-  // Mock data for now
-  const mockProducts: Product[] = [
-    {
-      id: '1',
-      category_id: '1',
-      name: 'Hamburguesa API',
-      description: 'Hamburguesa especial con carne, queso y vegetales',
-      price: 25000,
-      cost: 11000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      category_id: '1',
-      name: 'Hamburguesa Doble',
-      description: 'Hamburguesa con doble carne',
-      price: 32000,
-      cost: 16000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '3',
-      category_id: '1',
-      name: 'Combo API',
-      description: 'Hamburguesa + papas + gaseosa',
-      price: 35000,
-      cost: 15000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '4',
-      category_id: '2',
-      name: 'Papas',
-      description: 'Papas fritas',
-      price: 8000,
-      cost: 3000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '5',
-      category_id: '3',
-      name: 'Coca-Cola',
-      description: 'Gaseosa 350ml',
-      price: 5000,
-      cost: 2000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '6',
-      category_id: '3',
-      name: 'Agua',
-      description: 'Agua 500ml',
-      price: 3000,
-      cost: 1000,
-      active: true,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ]
-
-  const mockCategories = [
-    { id: '1', name: 'Hamburguesas' },
-    { id: '2', name: 'Acompañamientos' },
-    { id: '3', name: 'Bebidas' },
-  ]
+  const [processing, setProcessing] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    setProducts(mockProducts)
-    setCategories(mockCategories)
-    setLoading(false)
+    const loadCatalog = async () => {
+      try {
+        const [productsData, categoriesData] = await Promise.all([
+          productService.getProducts(),
+          productService.getCategories(),
+        ])
+        setProducts((productsData || []).filter((product: Product) => product.active !== false))
+        setCategories(categoriesData || [])
+      } catch (error) {
+        console.error('Error loading POS catalog:', error)
+        setMessage({ type: 'error', text: 'No se pudieron cargar los productos del menú.' })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCatalog()
   }, [])
 
   const addToCart = (product: Product) => {
@@ -146,7 +89,7 @@ export default function POSPage() {
     if (query.length >= 2) {
       try {
         const results = await customerService.searchCustomers(query)
-        setCustomerResults(results)
+        setCustomerResults(results || [])
       } catch (error) {
         console.error('Error searching customers:', error)
       }
@@ -163,11 +106,95 @@ export default function POSPage() {
     }).format(value)
   }
 
+  const handleCheckout = async (
+    paymentMethod: Sale['payment_method'],
+    generateInvoice: boolean
+  ) => {
+    if (cart.length === 0) {
+      setMessage({ type: 'error', text: 'Agrega productos al carrito antes de cobrar.' })
+      return
+    }
+
+    if (!user) {
+      setMessage({ type: 'error', text: 'No hay una sesión válida para registrar la venta.' })
+      return
+    }
+
+    setProcessing(true)
+    setMessage(null)
+
+    try {
+      let customer = selectedCustomer
+      if (generateInvoice && !customer) {
+        customer = await customerService.findOrCreateWalkInCustomer()
+        setSelectedCustomer(customer)
+        setCustomerSearch(customer.name)
+      }
+
+      let openRegister = null
+      try {
+        openRegister = await cashService.getOpenCashRegister(user.id)
+      } catch (error) {
+        console.warn('No open cash register:', error)
+      }
+
+      const sale = await salesService.createSale(
+        cart,
+        paymentMethod,
+        user.id,
+        customer?.id,
+        openRegister?.id
+      )
+
+      if (generateInvoice) {
+        if (!customer) {
+          throw new Error('No se pudo asociar un cliente a la factura.')
+        }
+        await invoiceService.createInvoice(sale.id, customer.id, user.id)
+      }
+
+      setCart([])
+      setMessage({
+        type: 'success',
+        text: generateInvoice
+          ? `Venta registrada y factura generada (${formatCurrency(sale.total)}).`
+          : `Venta registrada (${formatCurrency(sale.total)}).`,
+      })
+    } catch (error: any) {
+      console.error('Error processing sale:', error)
+      setMessage({
+        type: 'error',
+        text: error?.message || 'No se pudo completar la venta.',
+      })
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  if (authLoading || loading) {
+    return (
+      <div className="p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-64 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAdmin && !isCashier) {
+    return (
+      <div className="p-8">
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          Acceso denegado.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen">
-      {/* Left side - Products */}
       <div className="flex-1 flex flex-col">
-        {/* Search and Categories */}
         <div className="p-4 bg-white border-b">
           <div className="flex items-center space-x-2 mb-4">
             <div className="relative flex-1">
@@ -208,27 +235,36 @@ export default function POSPage() {
           </div>
         </div>
 
-        {/* Products Grid */}
         <div className="flex-1 overflow-y-auto p-4">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => addToCart(product)}
-                className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow text-left"
-              >
-                <div className="w-full h-32 bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
-                  <span className="text-gray-400 text-sm">Sin imagen</span>
-                </div>
-                <h3 className="font-semibold text-gray-900">{product.name}</h3>
-                <p className="text-blue-600 font-bold mt-1">{formatCurrency(product.price)}</p>
-              </button>
-            ))}
-          </div>
+          {filteredProducts.length === 0 ? (
+            <div className="text-center text-gray-500 py-16">
+              <p>No hay productos activos. Créalos en Menú para vender desde el POS.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => addToCart(product)}
+                  disabled={processing}
+                  className="bg-white p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow text-left disabled:opacity-50"
+                >
+                  <div className="w-full h-32 bg-gray-100 rounded-lg mb-3 flex items-center justify-center overflow-hidden">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-gray-400 text-sm">Sin imagen</span>
+                    )}
+                  </div>
+                  <h3 className="font-semibold text-gray-900">{product.name}</h3>
+                  <p className="text-blue-600 font-bold mt-1">{formatCurrency(product.price)}</p>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right side - Cart */}
       <div className="w-96 bg-white border-l flex flex-col">
         <div className="p-4 border-b">
           <h2 className="text-xl font-bold text-gray-900 flex items-center">
@@ -237,7 +273,6 @@ export default function POSPage() {
           </h2>
         </div>
 
-        {/* Customer Selection */}
         <div className="p-4 border-b">
           <div className="relative">
             <input
@@ -266,13 +301,21 @@ export default function POSPage() {
             )}
           </div>
           {selectedCustomer && (
-            <div className="mt-2 text-sm text-gray-600">
-              Cliente: {selectedCustomer.name}
+            <div className="mt-2 flex items-center justify-between text-sm text-gray-600">
+              <span>Cliente: {selectedCustomer.name}</span>
+              <button
+                onClick={() => {
+                  setSelectedCustomer(null)
+                  setCustomerSearch('')
+                }}
+                className="text-red-600 hover:underline"
+              >
+                Quitar
+              </button>
             </div>
           )}
         </div>
 
-        {/* Cart Items */}
         <div className="flex-1 overflow-y-auto p-4">
           {cart.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
@@ -314,8 +357,18 @@ export default function POSPage() {
           )}
         </div>
 
-        {/* Totals and Payment */}
         <div className="p-4 border-t bg-gray-50">
+          {message && (
+            <div
+              className={`mb-3 px-3 py-2 rounded text-sm ${
+                message.type === 'success'
+                  ? 'bg-green-50 text-green-800 border border-green-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}
+            >
+              {message.text}
+            </div>
+          )}
           <div className="space-y-2 mb-4">
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span>
@@ -332,21 +385,37 @@ export default function POSPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-2 mb-2">
-            <button className="flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+            <button
+              disabled={processing}
+              onClick={() => handleCheckout('cash', false)}
+              className="flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
               <DollarSign className="w-5 h-5" />
               <span>Efectivo</span>
             </button>
-            <button className="flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <button
+              disabled={processing}
+              onClick={() => handleCheckout('credit_card', false)}
+              className="flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
               <CreditCard className="w-5 h-5" />
               <span>Tarjeta</span>
             </button>
-            <button className="flex items-center justify-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+            <button
+              disabled={processing}
+              onClick={() => handleCheckout('nequi', false)}
+              className="flex items-center justify-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+            >
               <Smartphone className="w-5 h-5" />
               <span>Nequi</span>
             </button>
-            <button className="flex items-center justify-center space-x-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
+            <button
+              disabled={processing}
+              onClick={() => handleCheckout('cash', true)}
+              className="flex items-center justify-center space-x-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+            >
               <FileText className="w-5 h-5" />
-              <span>Facturar</span>
+              <span>{processing ? 'Procesando...' : 'Facturar'}</span>
             </button>
           </div>
         </div>

@@ -82,6 +82,14 @@ export default function InvoicingPage() {
     )
   }
 
+  const handleDownloadPDF = async (invoice: Invoice) => {
+    alert('Funcionalidad de descarga de PDF en desarrollo. Requiere generación de documento PDF.')
+  }
+
+  const handleSendEmail = async (invoice: Invoice) => {
+    alert('Funcionalidad de envío por correo en desarrollo. Requiere configuración de SMTP.')
+  }
+
   if (!isAdmin && !isCashier) {
     return (
       <div className="p-8">
@@ -233,20 +241,28 @@ export default function InvoicingPage() {
                   {new Date(invoice.created_at).toLocaleDateString('es-CO')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  Cliente #{invoice.customer_id}
+                  {(invoice as any).customers?.name || `Cliente #${invoice.customer_id}`}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                  {formatCurrency(invoice.dian_response ? parseFloat(invoice.dian_response) : 0)}
+                  {formatCurrency(Number((invoice as any).sales?.total || 0))}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {getStatusBadge(invoice.status)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
                   <div className="flex items-center justify-end space-x-2">
-                    <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Descargar PDF">
+                    <button
+                      onClick={() => handleDownloadPDF(invoice)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                      title="Descargar PDF"
+                    >
                       <Download className="w-4 h-4" />
                     </button>
-                    <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded" title="Enviar por correo">
+                    <button
+                      onClick={() => handleSendEmail(invoice)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                      title="Enviar por correo"
+                    >
                       <Send className="w-4 h-4" />
                     </button>
                   </div>

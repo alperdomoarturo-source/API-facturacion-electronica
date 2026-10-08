@@ -50,7 +50,14 @@ export const invoiceService = {
   },
 
   async createInvoice(saleId: string, customerId: string, userId: string) {
-    // Get sale details
+    const { data: existing } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('sale_id', saleId)
+      .maybeSingle()
+
+    if (existing) return existing
+
     const { data: sale, error: saleError } = await supabase
       .from('sales')
       .select(`
@@ -65,18 +72,20 @@ export const invoiceService = {
 
     if (saleError) throw saleError
 
-    // Get electronic invoicing config
     const { data: config } = await supabase
       .from('electronic_invoicing_config')
       .select('*')
-      .single()
+      .maybeSingle()
 
-    if (!config || config.status !== 'configured') {
-      throw new Error('Facturación electrónica no configurada')
-    }
+    const prefix = config?.prefix || 'FAC'
+    const nextFromRange = config ? Number(config.range_from || 0) + 1 : 0
 
-    // Generate invoice number
-    const invoiceNumber = `${config.prefix}${config.range_from + 1}`
+    const { count } = await supabase
+      .from('invoices')
+      .select('*', { count: 'exact', head: true })
+
+    const sequential = nextFromRange || (count || 0) + 1
+    const invoiceNumber = `${prefix}${String(sequential).padStart(4, '0')}`
 
     // Create invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -85,7 +94,7 @@ export const invoiceService = {
         sale_id: saleId,
         customer_id: customerId,
         invoice_number: invoiceNumber,
-        prefix: config.prefix,
+        prefix,
         status: 'pending',
       })
       .select()
@@ -94,26 +103,43 @@ export const invoiceService = {
     if (invoiceError) throw invoiceError
 
     // Create invoice items
-    const invoiceItems = sale.sale_items.map((item: any) => ({
+    const invoiceItems = (sale.sale_items || []).map((item: any) => ({
       invoice_id: invoice.id,
       product_id: item.product_id,
       quantity: item.quantity,
       unit_price: item.unit_price,
       total: item.total,
-      tax: item.total * 0.19, // Default 19% IVA
+      tax: item.total * 0.19,
     }))
 
-    const { error: itemsError } = await supabase
-      .from('invoice_items')
-      .insert(invoiceItems)
+    if (invoiceItems.length > 0) {
+      const { error: itemsError } = await supabase
+        .from('invoice_items')
+        .insert(invoiceItems)
 
-    if (itemsError) throw itemsError
+      if (itemsError) {
+        // Rollback: delete invoice if items fail
+        await supabase.from('invoices').delete().eq('id', invoice.id)
+        throw new Error(`Error al crear items de factura: ${itemsError.message}`)
+      }
+    }
 
-    // Update resolution range
-    await supabase
-      .from('electronic_invoicing_config')
-      .update({ range_from: config.range_from + 1 })
-      .eq('id', config.id)
+    // Update config range
+    if (config?.id) {
+      await supabase
+        .from('electronic_invoicing_config')
+        .update({ range_from: sequential })
+        .eq('id', config.id)
+    }
+
+    // Log audit
+    await supabase.from('audit_logs').insert({
+      user_id: userId,
+      action: 'create_invoice',
+      entity: 'invoices',
+      entity_id: invoice.id,
+      details: `Invoice ${invoiceNumber} created`,
+    }).then(() => undefined).catch(() => undefined)
 
     return invoice
   },

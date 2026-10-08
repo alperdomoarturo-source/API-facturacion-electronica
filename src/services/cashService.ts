@@ -120,10 +120,7 @@ export const cashService = {
   async getCashRegisters(userId?: string) {
     let query = supabase
       .from('cash_registers')
-      .select(`
-        *,
-        profiles (full_name)
-      `)
+      .select('*')
       .order('opening_date', { ascending: false })
 
     if (userId) {
@@ -162,10 +159,7 @@ export const cashService = {
   async getCashMovements(registerId: string) {
     const { data, error } = await supabase
       .from('cash_movements')
-      .select(`
-        *,
-        profiles (full_name)
-      `)
+      .select('*')
       .eq('cash_register_id', registerId)
       .order('created_at', { ascending: false })
 

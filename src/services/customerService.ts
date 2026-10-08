@@ -23,6 +23,32 @@ export const customerService = {
     return data
   },
 
+  async findOrCreateWalkInCustomer() {
+    const documentNumber = '222222222222'
+    const { data: existing, error: lookupError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('document_number', documentNumber)
+      .maybeSingle()
+
+    if (lookupError) throw lookupError
+    if (existing) return existing
+
+    const { data, error } = await supabase
+      .from('customers')
+      .insert({
+        document_type: 'CC',
+        document_number: documentNumber,
+        name: 'Consumidor Final',
+        tax_regime: '49',
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
   async searchCustomers(query: string) {
     const { data, error } = await supabase
       .from('customers')
