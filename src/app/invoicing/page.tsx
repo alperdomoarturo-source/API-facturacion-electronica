@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { jsPDF } from 'jspdf'
-import emailjs from '@emailjs/browser'
 import { useAuth } from '@/hooks/useAuth'
 import { invoiceService } from '@/services/invoiceService'
 import { dianService } from '@/services/dianService'
@@ -22,11 +21,6 @@ const paymentLabels: Record<string, string> = {
 // Leyenda para régimen no responsable (no obligado a facturar electrónicamente).
 const NO_OBLIGADO_LEYEND =
   'No obligado a facturar electrónicamente. Régimen no responsable de IVA.'
-
-// Configuración de EmailJS (variables públicas, se definen en Vercel / .env.local).
-const EMAILJS_SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID
-const EMAILJS_TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID
-const EMAILJS_PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY
 
 interface ReceiptItem {
   name: string
@@ -351,12 +345,6 @@ export default function InvoicingPage() {
       alert('Ingresa un correo válido del cliente.')
       return
     }
-    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
-      alert(
-        'El envío por correo no está configurado. Define en Vercel las variables NEXT_PUBLIC_EMAILJS_SERVICE_ID, NEXT_PUBLIC_EMAILJS_TEMPLATE_ID y NEXT_PUBLIC_EMAILJS_PUBLIC_KEY, y vuelve a desplegar.'
-      )
-      return
-    }
 
     setSendingEmail(true)
     try {
@@ -365,21 +353,18 @@ export default function InvoicingPage() {
       const receipt = buildReceipt(full, restaurant, formatCurrency)
       const messageHtml = buildReceiptHTML(receipt, formatCurrency)
 
-      await emailjs.send(
-        EMAILJS_SERVICE_ID,
-        EMAILJS_TEMPLATE_ID,
-        {
-          to_email: recipient,
-          to_name: receipt.customerName,
-          restaurant_name: receipt.restaurantName,
-          number: receipt.number,
-          date: receipt.date,
-          total: formatCurrency(receipt.total),
+      const res = await fetch('/api/send-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: recipient,
           subject: `Cuenta de cobro ${receipt.number} - ${receipt.restaurantName}`,
-          message_html: messageHtml,
-        },
-        { publicKey: EMAILJS_PUBLIC_KEY }
-      )
+          html: messageHtml,
+        }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || 'No se pudo enviar el correo.')
 
       alert(`Recibo enviado a ${recipient}.`)
       setEmailTarget(null)
