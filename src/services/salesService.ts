@@ -56,8 +56,8 @@ export const salesService = {
   ) {
     const subtotal = cartItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0)
     const taxable = Math.max(subtotal - discount, 0)
-    const tax = taxable * 0.19
-    const total = taxable + tax
+    const tax = 0
+    const total = taxable
 
     // Create sale
     const { data: sale, error: saleError } = await supabase

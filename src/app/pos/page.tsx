@@ -75,8 +75,7 @@ export default function POSPage() {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-  const cartTax = cartTotal * 0.19
-  const cartGrandTotal = cartTotal + cartTax
+  const cartGrandTotal = cartTotal
 
   const filteredProducts = products.filter((product) => {
     const matchesCategory = !selectedCategory || product.category_id === selectedCategory
@@ -373,10 +372,6 @@ export default function POSPage() {
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span>
               <span>{formatCurrency(cartTotal)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>IVA (19%)</span>
-              <span>{formatCurrency(cartTax)}</span>
             </div>
             <div className="flex justify-between text-xl font-bold text-gray-900 pt-2 border-t">
               <span>Total</span>

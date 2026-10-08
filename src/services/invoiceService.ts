@@ -109,7 +109,7 @@ export const invoiceService = {
       quantity: item.quantity,
       unit_price: item.unit_price,
       total: item.total,
-      tax: item.total * 0.19,
+      tax: 0,
     }))
 
     if (invoiceItems.length > 0) {
