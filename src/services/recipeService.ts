@@ -100,6 +100,56 @@ export const recipeService = {
     if (error) throw error
   },
 
+  // Crea o reemplaza la receta de un producto con sus ingredientes y cantidades.
+  // Esto es lo que permite que una venta descuente stock automáticamente.
+  async setRecipeForProduct(
+    productId: string,
+    items: { ingredient_id: string; quantity: number }[]
+  ) {
+    const cleanItems = items.filter((i) => i.ingredient_id && Number(i.quantity) > 0)
+
+    let totalCost = 0
+    for (const item of cleanItems) {
+      const { data: ing } = await supabase
+        .from('ingredients')
+        .select('unit_cost')
+        .eq('id', item.ingredient_id)
+        .maybeSingle()
+      if (ing) totalCost += Number(ing.unit_cost) * Number(item.quantity)
+    }
+
+    const { data: existing } = await supabase
+      .from('recipes')
+      .select('id')
+      .eq('product_id', productId)
+      .maybeSingle()
+
+    let recipeId: string
+    if (existing) {
+      recipeId = existing.id
+      await supabase.from('recipes').update({ calculated_cost: totalCost }).eq('id', recipeId)
+      await supabase.from('recipe_items').delete().eq('recipe_id', recipeId)
+    } else {
+      const { data: created, error } = await supabase
+        .from('recipes')
+        .insert({ product_id: productId, calculated_cost: totalCost })
+        .select()
+        .single()
+      if (error) throw error
+      recipeId = created.id
+    }
+
+    if (cleanItems.length > 0) {
+      const rows = cleanItems.map((i) => ({
+        recipe_id: recipeId,
+        ingredient_id: i.ingredient_id,
+        quantity: Number(i.quantity),
+      }))
+      const { error } = await supabase.from('recipe_items').insert(rows)
+      if (error) throw error
+    }
+  },
+
   async addRecipeItem(recipeId: string, item: Omit<RecipeItem, 'id' | 'created_at' | 'recipe_id'>) {
     const { data, error } = await supabase
       .from('recipe_items')

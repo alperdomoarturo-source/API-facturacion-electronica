@@ -668,6 +668,36 @@ CREATE POLICY "Admins can manage recipes" ON recipes
     )
   );
 
+-- Cashiers can view recipes (needed so POS sales can deduct stock)
+CREATE POLICY "Cashiers can view recipes" ON recipes
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.user_id = auth.uid()
+      AND profiles.role IN ('ADMIN', 'CASHIER')
+    )
+  );
+
+-- Recipe items policies (admin only)
+CREATE POLICY "Admins can manage recipe items" ON recipe_items
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.user_id = auth.uid()
+      AND profiles.role = 'ADMIN'
+    )
+  );
+
+-- Cashiers can view recipe items (needed so POS sales can deduct stock)
+CREATE POLICY "Cashiers can view recipe items" ON recipe_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.user_id = auth.uid()
+      AND profiles.role IN ('ADMIN', 'CASHIER')
+    )
+  );
+
 -- Inventory policies (admin only)
 CREATE POLICY "Admins can manage inventory" ON inventory
   FOR ALL USING (

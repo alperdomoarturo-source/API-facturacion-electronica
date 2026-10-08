@@ -3,13 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { productService } from '@/services/productService'
-import { Product, Category } from '@/types'
-import { Plus, Edit, Trash2, Search, Image as ImageIcon } from 'lucide-react'
+import { inventoryService } from '@/services/inventoryService'
+import { recipeService } from '@/services/recipeService'
+import { Product, Category, Ingredient } from '@/types'
+import { Plus, Edit, Trash2, Search, Image as ImageIcon, X } from 'lucide-react'
 
 export default function MenuPage() {
   const { isAdmin } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -24,12 +27,14 @@ export default function MenuPage() {
 
   const fetchData = async () => {
     try {
-      const [productsData, categoriesData] = await Promise.all([
+      const [productsData, categoriesData, ingredientsData] = await Promise.all([
         productService.getProducts(),
         productService.getCategories(),
+        inventoryService.getIngredients(),
       ])
       setProducts(productsData)
       setCategories(categoriesData)
+      setIngredients(ingredientsData || [])
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -207,6 +212,7 @@ export default function MenuPage() {
         <ProductModal
           product={editingProduct}
           categories={categories}
+          ingredients={ingredients}
           onClose={() => {
             setShowProductModal(false)
             setEditingProduct(null)
@@ -241,11 +247,13 @@ export default function MenuPage() {
 function ProductModal({
   product,
   categories,
+  ingredients,
   onClose,
   onSave,
 }: {
   product: Product | null
   categories: Category[]
+  ingredients: Ingredient[]
   onClose: () => void
   onSave: () => void
 }) {
@@ -258,15 +266,64 @@ function ProductModal({
     active: product?.active ?? true,
     image_url: product?.image_url || '',
   })
+  const [recipeItems, setRecipeItems] = useState<{ ingredient_id: string; quantity: number }[]>([])
+  const [loadingRecipe, setLoadingRecipe] = useState(false)
+
+  useEffect(() => {
+    if (!product) return
+    let cancelled = false
+    setLoadingRecipe(true)
+    recipeService
+      .getRecipeByProduct(product.id)
+      .then((recipe: any) => {
+        if (cancelled) return
+        const items = (recipe?.recipe_items || []).map((ri: any) => ({
+          ingredient_id: ri.ingredient_id,
+          quantity: Number(ri.quantity),
+        }))
+        setRecipeItems(items)
+      })
+      .catch(() => {
+        // Sin receta todavía: dejar vacío.
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRecipe(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [product])
+
+  const addRecipeItem = () => {
+    const used = new Set(recipeItems.map((i) => i.ingredient_id))
+    const firstAvailable = ingredients.find((ing) => !used.has(ing.id))
+    setRecipeItems([...recipeItems, { ingredient_id: firstAvailable?.id || '', quantity: 1 }])
+  }
+
+  const updateRecipeItem = (index: number, patch: Partial<{ ingredient_id: string; quantity: number }>) => {
+    setRecipeItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)))
+  }
+
+  const removeRecipeItem = (index: number) => {
+    setRecipeItems((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      let productId = product?.id
       if (product) {
         await productService.updateProduct(product.id, formData)
       } else {
-        await productService.createProduct(formData as any)
+        const created = await productService.createProduct(formData as any)
+        productId = created.id
       }
+
+      if (productId) {
+        const cleanItems = recipeItems.filter((i) => i.ingredient_id && Number(i.quantity) > 0)
+        await recipeService.setRecipeForProduct(productId, cleanItems)
+      }
+
       onSave()
     } catch (error) {
       console.error('Error saving product:', error)
@@ -276,7 +333,7 @@ function ProductModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b">
           <h2 className="text-xl font-bold text-gray-900">
             {product ? 'Editar Producto' : 'Nuevo Producto'}
@@ -377,6 +434,87 @@ function ProductModal({
               Producto activo
             </label>
           </div>
+
+          {/* Ingredientes (receta) */}
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Ingredientes
+                </label>
+                <p className="text-xs text-gray-500">
+                  Se descuentan del inventario automáticamente al vender este producto.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addRecipeItem}
+                disabled={ingredients.length === 0}
+                className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Agregar</span>
+              </button>
+            </div>
+
+            {ingredients.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No hay ingredientes. Créalos primero en la sección Inventario.
+              </p>
+            ) : loadingRecipe ? (
+              <p className="text-sm text-gray-500">Cargando ingredientes...</p>
+            ) : recipeItems.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Sin ingredientes. Este producto no descontará stock.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {recipeItems.map((item, index) => {
+                  const selected = ingredients.find((ing) => ing.id === item.ingredient_id)
+                  return (
+                    <div key={index} className="flex items-center space-x-2">
+                      <select
+                        value={item.ingredient_id}
+                        onChange={(e) => updateRecipeItem(index, { ingredient_id: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Seleccionar ingrediente</option>
+                        {ingredients.map((ing) => (
+                          <option
+                            key={ing.id}
+                            value={ing.id}
+                            disabled={
+                              ing.id !== item.ingredient_id &&
+                              recipeItems.some((r) => r.ingredient_id === ing.id)
+                            }
+                          >
+                            {ing.name} ({ing.unit})
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.quantity}
+                        onChange={(e) => updateRecipeItem(index, { quantity: Number(e.target.value) })}
+                        className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-500 w-12">{selected?.unit}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeRecipeItem(index)}
+                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
