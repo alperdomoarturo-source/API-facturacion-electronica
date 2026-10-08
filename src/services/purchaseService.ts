@@ -1,4 +1,5 @@
 import { supabase } from '@/supabase/client'
+import { inventoryService } from '@/services/inventoryService'
 import { Purchase, PurchaseItem } from '@/types'
 
 export const purchaseService = {
@@ -74,12 +75,9 @@ export const purchaseService = {
 
     // Update inventory
     for (const item of items) {
-      await supabase.rpc('update_stock', {
-        ingredient_id: item.ingredient_id,
-        quantity: item.quantity,
-        movement_type: 'purchase',
-        user_id: userId,
-      })
+      await inventoryService
+        .updateStock(item.ingredient_id, item.quantity, 'purchase', undefined, userId)
+        .catch((err) => console.error('Stock update failed:', err))
     }
 
     return purchase

@@ -68,21 +68,21 @@ export const inventoryService = {
   },
 
   async updateStock(ingredientId: string, quantity: number, type: InventoryMovement['type'], reason?: string, userId?: string) {
-    // Update inventory
-    const { data: currentInventory } = await supabase
-      .from('inventory')
+    // El stock vive en ingredients.current_stock (la tabla que leen Inventario y dashboard).
+    const { data: current, error: readError } = await supabase
+      .from('ingredients')
       .select('current_stock')
-      .eq('ingredient_id', ingredientId)
+      .eq('id', ingredientId)
       .single()
 
-    if (!currentInventory) throw new Error('Inventory not found')
+    if (readError || !current) throw new Error('Ingrediente no encontrado')
 
-    const newStock = currentInventory.current_stock + quantity
+    const newStock = Number(current.current_stock || 0) + quantity
 
     const { error: updateError } = await supabase
-      .from('inventory')
-      .update({ current_stock: newStock, last_updated: new Date().toISOString() })
-      .eq('ingredient_id', ingredientId)
+      .from('ingredients')
+      .update({ current_stock: newStock, updated_at: new Date().toISOString() })
+      .eq('id', ingredientId)
 
     if (updateError) throw updateError
 
@@ -123,14 +123,12 @@ export const inventoryService = {
 
   async getLowStock() {
     const { data, error } = await supabase
-      .from('inventory')
-      .select(`
-        *,
-        ingredients (*)
-      `)
-      .lt('current_stock', 'min_stock')
+      .from('ingredients')
+      .select('*')
 
     if (error) throw error
-    return data
+    return (data || []).filter(
+      (item: any) => Number(item.current_stock) <= Number(item.min_stock)
+    )
   },
 }

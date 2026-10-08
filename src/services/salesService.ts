@@ -1,4 +1,5 @@
 import { supabase } from '@/supabase/client'
+import { inventoryService } from '@/services/inventoryService'
 import { Sale, SaleItem, CartItem } from '@/types'
 
 export const salesService = {
@@ -109,12 +110,10 @@ export const salesService = {
       if (recipe) {
         for (const recipeItem of recipe.recipe_items) {
           const quantityToDeduct = recipeItem.quantity * cartItem.quantity
-          await supabase.rpc('update_stock', {
-            ingredient_id: recipeItem.ingredient_id,
-            quantity: -quantityToDeduct,
-            movement_type: 'sale',
-            user_id: userId,
-          })
+          // No bloqueante: si falla el descuento de stock, la venta ya quedó registrada.
+          await inventoryService
+            .updateStock(recipeItem.ingredient_id, -quantityToDeduct, 'sale', undefined, userId)
+            .catch((err) => console.error('Stock deduction failed:', err))
         }
       }
     }
