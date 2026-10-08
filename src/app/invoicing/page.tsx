@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { jsPDF } from 'jspdf'
+import emailjs from '@emailjs/browser'
 import { useAuth } from '@/hooks/useAuth'
 import { invoiceService } from '@/services/invoiceService'
 import { dianService } from '@/services/dianService'
@@ -18,6 +19,94 @@ const paymentLabels: Record<string, string> = {
   other: 'Otro',
 }
 
+// Leyenda para régimen no responsable (no obligado a facturar electrónicamente).
+const NO_OBLIGADO_LEYEND =
+  'No obligado a facturar electrónicamente. Régimen no responsable de IVA.'
+
+// Configuración de EmailJS (variables públicas, se definen en Vercel / .env.local).
+const EMAILJS_SERVICE_ID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID
+const EMAILJS_TEMPLATE_ID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID
+const EMAILJS_PUBLIC_KEY = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY
+
+interface ReceiptItem {
+  name: string
+  quantity: number
+  unitPrice: number
+  total: number
+}
+
+interface ReceiptData {
+  restaurantName: string
+  restaurantNit: string
+  restaurantPhone: string
+  restaurantAddress: string
+  number: string
+  date: string
+  customerName: string
+  customerDoc: string
+  paymentMethod: string
+  items: ReceiptItem[]
+  total: number
+}
+
+function buildReceipt(full: any, restaurant: Restaurant | null, formatCurrency: (v: number) => string): ReceiptData {
+  const sale = full?.sales || {}
+  const customer = full?.customers || {}
+  const rawItems: any[] = sale.sale_items || []
+  const items: ReceiptItem[] = rawItems.map((item) => ({
+    name: item.products?.name || 'Producto',
+    quantity: Number(item.quantity || 0),
+    unitPrice: Number(item.unit_price || 0),
+    total: Number(item.total || 0),
+  }))
+  // Régimen no responsable: el total es la suma de los ítems, sin IVA.
+  const total = items.reduce((sum, it) => sum + it.total, 0)
+  return {
+    restaurantName: restaurant?.name || 'Restaurante',
+    restaurantNit: restaurant?.nit || '',
+    restaurantPhone: restaurant?.phone || '',
+    restaurantAddress: [restaurant?.address, restaurant?.city].filter(Boolean).join(', '),
+    number: full?.invoice_number || '',
+    date: new Date(full?.created_at || Date.now()).toLocaleDateString('es-CO'),
+    customerName: customer.name || 'Cliente',
+    customerDoc: [customer.document_type, customer.document_number].filter(Boolean).join(' '),
+    paymentMethod: sale.payment_method ? paymentLabels[sale.payment_method] || sale.payment_method : '',
+    items,
+    total,
+  }
+}
+
+function buildReceiptHTML(r: ReceiptData, formatCurrency: (v: number) => string): string {
+  const rows = r.items
+    .map(
+      (it) =>
+        `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.name}</td>` +
+        `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:center;">${it.quantity}</td>` +
+        `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${formatCurrency(it.unitPrice)}</td>` +
+        `<td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${formatCurrency(it.total)}</td></tr>`
+    )
+    .join('')
+  return (
+    `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:520px;margin:0 auto;">` +
+    `<h2 style="margin:0 0 4px;">${r.restaurantName}</h2>` +
+    `<div style="font-size:12px;color:#555;">${r.restaurantNit ? `NIT/CC: ${r.restaurantNit}` : ''}` +
+    `${r.restaurantAddress ? ` · ${r.restaurantAddress}` : ''}${r.restaurantPhone ? ` · Tel: ${r.restaurantPhone}` : ''}</div>` +
+    `<hr style="border:none;border-top:1px solid #ddd;margin:12px 0;" />` +
+    `<div style="font-size:13px;"><strong>Cuenta de cobro N°:</strong> ${r.number}<br/>` +
+    `<strong>Fecha:</strong> ${r.date}<br/>` +
+    `<strong>Cliente:</strong> ${r.customerName}${r.customerDoc ? ` (${r.customerDoc})` : ''}` +
+    `${r.paymentMethod ? `<br/><strong>Medio de pago:</strong> ${r.paymentMethod}` : ''}</div>` +
+    `<table style="width:100%;border-collapse:collapse;margin-top:14px;font-size:13px;">` +
+    `<thead><tr style="background:#f5f5f5;text-align:left;">` +
+    `<th style="padding:6px 8px;">Producto</th><th style="padding:6px 8px;text-align:center;">Cant</th>` +
+    `<th style="padding:6px 8px;text-align:right;">Valor</th><th style="padding:6px 8px;text-align:right;">Total</th>` +
+    `</tr></thead><tbody>${rows}</tbody></table>` +
+    `<div style="text-align:right;font-size:16px;font-weight:bold;margin-top:12px;">TOTAL: ${formatCurrency(r.total)}</div>` +
+    `<p style="font-size:11px;color:#777;margin-top:20px;text-align:center;">${NO_OBLIGADO_LEYEND}</p>` +
+    `</div>`
+  )
+}
+
 export default function InvoicingPage() {
   const { isAdmin, isCashier } = useAuth()
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -28,6 +117,9 @@ export default function InvoicingPage() {
   const [config, setConfig] = useState<any>(null)
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [emailTarget, setEmailTarget] = useState<Invoice | null>(null)
+  const [emailTo, setEmailTo] = useState('')
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   useEffect(() => {
     fetchInvoices()
@@ -123,7 +215,7 @@ export default function InvoicingPage() {
       // Encabezado: datos del restaurante
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(16)
-      doc.text(restaurant?.name || 'Factura de Venta', margin, y)
+      doc.text(restaurant?.name || 'Cuenta de Cobro', margin, y)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(9)
       const companyLines = [
@@ -144,7 +236,7 @@ export default function InvoicingPage() {
       doc.rect(boxX, 40, boxW, 58)
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(11)
-      doc.text('FACTURA DE VENTA', right - 12, 58, { align: 'right' })
+      doc.text('CUENTA DE COBRO', right - 12, 58, { align: 'right' })
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(10)
       doc.text(`N°: ${full.invoice_number}`, right - 12, 76, { align: 'right' })
@@ -219,46 +311,25 @@ export default function InvoicingPage() {
         y += Math.max(15, desc.length * 12)
       })
 
-      // Totales
-      const subtotal = Number(sale.subtotal || 0)
-      const tax = Number(sale.tax || 0)
-      const discount = Number(sale.discount || 0)
-      const total = Number(sale.total || subtotal + tax)
+      // Total (régimen no responsable: sin IVA)
+      const total = items.reduce((sum, it) => sum + Number(it.total || 0), 0)
       y += 8
       doc.setDrawColor(220)
       doc.line(colUnit - 10, y, right, y)
-      const totalRows: Array<[string, string]> = [['Subtotal', formatCurrency(subtotal)]]
-      if (discount > 0) totalRows.push(['Descuento', `- ${formatCurrency(discount)}`])
-      totalRows.push(['IVA (19%)', formatCurrency(tax)])
-      doc.setFontSize(10)
-      totalRows.forEach(([label, value]) => {
-        y += 16
-        doc.setFont('helvetica', 'normal')
-        doc.text(label, colUnit - 10, y)
-        doc.text(value, colTotal, y, { align: 'right' })
-      })
-      y += 20
+      y += 22
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(12)
       doc.text('TOTAL', colUnit - 10, y)
       doc.text(formatCurrency(total), colTotal, y, { align: 'right' })
 
-      // Pie: resolución DIAN y CUFE
-      const footerLines = [
-        config?.resolution_number
-          ? `Resolución DIAN N° ${config.resolution_number} (${config.prefix || full.prefix})`
-          : '',
-        full.cufe ? `CUFE: ${full.cufe}` : '',
-        'Representación gráfica de la factura electrónica.',
-      ].filter(Boolean)
-      const footerStart = Math.max(y + 30, 760)
+      // Pie: leyenda de no obligado a facturar
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(8)
-      footerLines.forEach((line, i) => {
-        doc.text(line, margin, footerStart + i * 11)
-      })
+      const legendY = Math.max(y + 30, 760)
+      const legend = doc.splitTextToSize(NO_OBLIGADO_LEYEND, right - margin)
+      doc.text(legend, margin, legendY)
 
-      doc.save(`Factura-${full.invoice_number}.pdf`)
+      doc.save(`Cuenta-de-cobro-${full.invoice_number}.pdf`)
     } catch (error: any) {
       console.error('Error generating invoice PDF:', error)
       alert(error?.message || 'No se pudo generar el PDF de la factura.')
@@ -267,8 +338,58 @@ export default function InvoicingPage() {
     }
   }
 
-  const handleSendEmail = async (invoice: Invoice) => {
-    alert('Funcionalidad de envío por correo en desarrollo. Requiere configuración de SMTP.')
+  const openEmailModal = (invoice: Invoice) => {
+    const presetEmail = (invoice as any).customers?.email || ''
+    setEmailTo(presetEmail)
+    setEmailTarget(invoice)
+  }
+
+  const confirmSendEmail = async () => {
+    if (!emailTarget) return
+    const recipient = emailTo.trim()
+    if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      alert('Ingresa un correo válido del cliente.')
+      return
+    }
+    if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+      alert(
+        'El envío por correo no está configurado. Define en Vercel las variables NEXT_PUBLIC_EMAILJS_SERVICE_ID, NEXT_PUBLIC_EMAILJS_TEMPLATE_ID y NEXT_PUBLIC_EMAILJS_PUBLIC_KEY, y vuelve a desplegar.'
+      )
+      return
+    }
+
+    setSendingEmail(true)
+    try {
+      const full = await invoiceService.getInvoice(emailTarget.id)
+      if (!full) throw new Error('No se pudo obtener el detalle de la factura.')
+      const receipt = buildReceipt(full, restaurant, formatCurrency)
+      const messageHtml = buildReceiptHTML(receipt, formatCurrency)
+
+      await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID,
+        {
+          to_email: recipient,
+          to_name: receipt.customerName,
+          restaurant_name: receipt.restaurantName,
+          number: receipt.number,
+          date: receipt.date,
+          total: formatCurrency(receipt.total),
+          subject: `Cuenta de cobro ${receipt.number} - ${receipt.restaurantName}`,
+          message_html: messageHtml,
+        },
+        { publicKey: EMAILJS_PUBLIC_KEY }
+      )
+
+      alert(`Recibo enviado a ${recipient}.`)
+      setEmailTarget(null)
+      setEmailTo('')
+    } catch (error: any) {
+      console.error('Error sending email:', error)
+      alert(error?.message || 'No se pudo enviar el correo.')
+    } finally {
+      setSendingEmail(false)
+    }
   }
 
   if (!isAdmin && !isCashier) {
@@ -441,7 +562,7 @@ export default function InvoicingPage() {
                       <Download className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleSendEmail(invoice)}
+                      onClick={() => openEmailModal(invoice)}
                       className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
                       title="Enviar por correo"
                     >
@@ -470,6 +591,54 @@ export default function InvoicingPage() {
             fetchConfig()
           }}
         />
+      )}
+
+      {/* Send Email Modal */}
+      {emailTarget && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-6 border-b">
+              <h2 className="text-xl font-bold text-gray-900">Enviar recibo por correo</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Cuenta de cobro {emailTarget.invoice_number}
+              </p>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Correo del cliente
+              </label>
+              <input
+                type="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="cliente@gmail.com"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex justify-end space-x-3 p-6 border-t">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailTarget(null)
+                  setEmailTo('')
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                disabled={sendingEmail}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmSendEmail}
+                disabled={sendingEmail}
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                <span>{sendingEmail ? 'Enviando...' : 'Enviar'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
