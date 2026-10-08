@@ -19,8 +19,9 @@ export default function ReportsPage() {
     if (!isAdmin) return
     const load = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0]
-        const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
+        const now = new Date()
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
         const [salesStats, invoiceStats, products] = await Promise.all([
           reportService.getSalesStats(monthStart, today),
           reportService.getInvoiceStats(monthStart, today),

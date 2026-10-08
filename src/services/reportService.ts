@@ -1,12 +1,25 @@
 import { supabase } from '@/supabase/client'
 
+// Convierte una fecha 'YYYY-MM-DD' al instante UTC del inicio/fin de ese día
+// en hora local. created_at es timestamptz, así que filtrar con la fecha sola
+// ('2026-10-08') equivale a medianoche y excluye todo el día.
+function startOfDay(dateStr: string) {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0).toISOString()
+}
+
+function endOfDay(dateStr: string) {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999).toISOString()
+}
+
 export const reportService = {
   async getSalesStats(startDate: string, endDate: string) {
     const { data, error } = await supabase
       .from('sales')
       .select('total, payment_method, created_at')
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
+      .gte('created_at', startOfDay(startDate))
+      .lte('created_at', endOfDay(endDate))
       .eq('status', 'completed')
 
     if (error) throw error
@@ -74,8 +87,8 @@ export const reportService = {
     const { data: sales, error: salesError } = await supabase
       .from('sales')
       .select('total, subtotal')
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
+      .gte('created_at', startOfDay(startDate))
+      .lte('created_at', endOfDay(endDate))
       .eq('status', 'completed')
 
     if (salesError) throw salesError
@@ -98,8 +111,8 @@ export const reportService = {
     const { data: purchases, error: purchasesError } = await supabase
       .from('purchases')
       .select('total')
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
+      .gte('created_at', startOfDay(startDate))
+      .lte('created_at', endOfDay(endDate))
 
     if (purchasesError) throw purchasesError
 
@@ -142,8 +155,8 @@ export const reportService = {
     const { data, error } = await supabase
       .from('invoices')
       .select('status')
-      .gte('created_at', startDate)
-      .lte('created_at', endDate)
+      .gte('created_at', startOfDay(startDate))
+      .lte('created_at', endOfDay(endDate))
 
     if (error) throw error
 
