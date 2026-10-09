@@ -251,15 +251,19 @@ function IngredientModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const payload = {
+        ...formData,
+        expiration_date: formData.expiration_date || null,
+      }
       if (ingredient) {
-        await inventoryService.updateIngredient(ingredient.id, formData)
+        await inventoryService.updateIngredient(ingredient.id, payload)
       } else {
-        await inventoryService.createIngredient(formData as any)
+        await inventoryService.createIngredient(payload as any)
       }
       onSave()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving ingredient:', error)
-      alert('Error al guardar el ingrediente')
+      alert('Error al guardar el ingrediente: ' + (error?.message || 'desconocido'))
     }
   }
 
