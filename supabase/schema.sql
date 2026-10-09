@@ -757,6 +757,16 @@ CREATE POLICY "Admins can view all sale items" ON sale_items
     )
   );
 
+-- Cashiers can view sale items of their own sales (needed to build receipts)
+CREATE POLICY "Cashiers can view own sale items" ON sale_items
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM sales
+      WHERE sales.id = sale_items.sale_id
+      AND sales.user_id = auth.uid()
+    )
+  );
+
 CREATE POLICY "System can insert sale items" ON sale_items
   FOR INSERT WITH CHECK (true);
 
