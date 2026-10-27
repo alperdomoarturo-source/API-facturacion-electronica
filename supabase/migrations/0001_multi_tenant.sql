@@ -18,12 +18,33 @@
 --      restaurante; bórralas desde Authentication si también quieres limpiarlas.
 --
 -- Es idempotente: puede volver a ejecutarse sin que falle.
+-- Nota: el orden importa. profiles.restaurant_id tiene que existir antes de
+-- crear current_restaurant_id(), porque PostgreSQL valida el cuerpo de una
+-- función SQL al momento de crearla.
 -- ============================================================================
 
 BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Funciones de contexto del tenant
+-- 1. profiles.restaurant_id (primero la columna, después las funciones)
+-- ----------------------------------------------------------------------------
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS restaurant_id UUID;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.profiles'::regclass AND contype = 'f'
+      AND conname = 'profiles_restaurant_id_fkey'
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT profiles_restaurant_id_fkey
+      FOREIGN KEY (restaurant_id) REFERENCES public.restaurant(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- ----------------------------------------------------------------------------
+-- 2. Funciones de contexto del tenant
 -- ----------------------------------------------------------------------------
 -- SECURITY DEFINER para poder leer profiles() sin recursión de RLS.
 CREATE OR REPLACE FUNCTION public.current_restaurant_id()
@@ -60,30 +81,15 @@ GRANT EXECUTE ON FUNCTION public.current_restaurant_id() TO authenticated, anon,
 GRANT EXECUTE ON FUNCTION public.is_restaurant_admin() TO authenticated, anon, service_role;
 
 -- ----------------------------------------------------------------------------
--- 2. restaurante: deja de ser una fila única global
+-- 3. restaurante: deja de ser una fila única global
 -- ----------------------------------------------------------------------------
 ALTER TABLE public.restaurant ALTER COLUMN nit DROP NOT NULL;
 ALTER TABLE public.restaurant DROP CONSTRAINT IF EXISTS restaurant_nit_key;
 DROP INDEX IF EXISTS public.restaurant_nit_key;
 
 -- ----------------------------------------------------------------------------
--- 3. profiles.restaurant_id
+-- 4. Las cuentas ya registradas pasan a un restaurante
 -- ----------------------------------------------------------------------------
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS restaurant_id UUID;
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conrelid = 'public.profiles'::regclass AND contype = 'f'
-      AND conname = 'profiles_restaurant_id_fkey'
-  ) THEN
-    ALTER TABLE public.profiles
-      ADD CONSTRAINT profiles_restaurant_id_fkey
-      FOREIGN KEY (restaurant_id) REFERENCES public.restaurant(id) ON DELETE CASCADE;
-  END IF;
-END $$;
-
--- Las cuentas ya registradas pasan a un restaurante existente (o se crea uno).
 DO $$
 DECLARE
   v_restaurant UUID;
@@ -102,9 +108,12 @@ BEGIN
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS profiles_user_id_key ON public.profiles (user_id);
+CREATE INDEX IF NOT EXISTS profiles_restaurant_id_idx ON public.profiles (restaurant_id);
+
+ALTER TABLE public.profiles ALTER COLUMN restaurant_id SET NOT NULL;
 
 -- ----------------------------------------------------------------------------
--- 4. Datos de prueba afuera
+-- 5. Datos de prueba afuera
 -- ----------------------------------------------------------------------------
 TRUNCATE TABLE
   public.audit_logs,
@@ -136,7 +145,7 @@ TRUNCATE TABLE
 RESTART IDENTITY CASCADE;
 
 -- ----------------------------------------------------------------------------
--- 5. restaurant_id en todas las tablas de negocio
+-- 6. restaurant_id en todas las tablas de negocio
 -- ----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -171,10 +180,8 @@ BEGIN
   END LOOP;
 END $$;
 
-ALTER TABLE public.profiles ALTER COLUMN restaurant_id SET NOT NULL;
-
 -- ----------------------------------------------------------------------------
--- 6. Unicidades por cuenta (antes eran globales y chocaban entre clientes)
+-- 7. Unicidades por cuenta (antes eran globales y chocaban entre clientes)
 -- ----------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -182,12 +189,12 @@ DECLARE
 BEGIN
   FOR pair IN
     SELECT * FROM (VALUES
-      ('customers',                   'customers_document_number_key',                   'document_number'),
-      ('suppliers',                   'suppliers_nit_key',                              'nit'),
-      ('ingredients',                 'ingredients_code_key',                           'code'),
-      ('invoices',                    'invoices_invoice_number_key',                    'invoice_number'),
-      ('credit_notes',                'credit_notes_note_number_key',                   'note_number'),
-      ('debit_notes',                 'debit_notes_note_number_key',                    'note_number')
+      ('customers',    'customers_document_number_key', 'document_number'),
+      ('suppliers',    'suppliers_nit_key',             'nit'),
+      ('ingredients',  'ingredients_code_key',         'code'),
+      ('invoices',     'invoices_invoice_number_key',  'invoice_number'),
+      ('credit_notes', 'credit_notes_note_number_key', 'note_number'),
+      ('debit_notes',  'debit_notes_note_number_key',  'note_number')
     ) AS p(tbl, old_constraint, col)
   LOOP
     EXECUTE format('ALTER TABLE public.%I DROP CONSTRAINT IF EXISTS %I', pair.tbl, pair.old_constraint);
@@ -199,18 +206,19 @@ BEGIN
   END LOOP;
 END $$;
 
-ALTER TABLE public.electronic_invoicing_config DROP CONSTRAINT IF EXISTS electronic_invoicing_config_prefix_key;
+ALTER TABLE public.electronic_invoicing_config
+  DROP CONSTRAINT IF EXISTS electronic_invoicing_config_prefix_key;
 CREATE UNIQUE INDEX IF NOT EXISTS electronic_invoicing_config_restaurant_uq
   ON public.electronic_invoicing_config (restaurant_id);
 
 -- ----------------------------------------------------------------------------
--- 7. RLS por cuenta
+-- 8. RLS por cuenta
 -- ----------------------------------------------------------------------------
 ALTER TABLE public.restaurant ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tax_rates ENABLE ROW LEVEL SECURITY;
 
--- 7.1 Borra TODAS las políticas actuales (sirve tanto para schema.sql como
+-- 8.1 Borra TODAS las políticas actuales (sirve tanto para schema.sql como
 --     para schema-simple.sql, que tienen nombres distintos).
 DO $$
 DECLARE
@@ -230,7 +238,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 7.2 Tablas que cualquier miembro de la cuenta puede leer y escribir
+-- 8.2 Tablas que cualquier miembro de la cuenta puede leer y escribir
 --     (ruta de venta: POS, caja, clientes, inventario, auditoría).
 --     electronic_invoicing_config entra porque el POS avanza el contador de
 --     numeración (range_from) al facturar; si un cajero no pudiera
@@ -254,7 +262,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 7.3 Tablas de administración: todos leen, solo ADMIN escribe.
+-- 8.3 Tablas de administración: todos leen, solo ADMIN escribe.
 DO $$
 DECLARE
   t TEXT;
@@ -276,7 +284,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- 7.4 Datos maestros de la cuenta y catálogo de impuestos.
+-- 8.4 Datos maestros de la cuenta y catálogo de impuestos.
 CREATE POLICY tenant_read ON public.restaurant
   FOR SELECT TO authenticated USING (id = public.current_restaurant_id());
 CREATE POLICY tenant_admin_write ON public.restaurant
@@ -289,7 +297,7 @@ CREATE POLICY tax_rates_read ON public.tax_rates
   FOR SELECT TO authenticated USING (true);
 
 -- ----------------------------------------------------------------------------
--- 8. Registro: 1 sola cuenta ADMIN + su propio restaurante
+-- 9. Registro: 1 sola cuenta ADMIN + su propio restaurante
 -- ----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -342,7 +350,7 @@ CREATE TRIGGER on_auth_user_created
 COMMIT;
 
 -- ----------------------------------------------------------------------------
--- 9. Verificación rápida (opcional)
+-- 10. Verificación rápida (opcional)
 -- ----------------------------------------------------------------------------
 -- SELECT (SELECT count(*) FROM public.profiles)            AS perfiles,
 --        (SELECT count(*) FROM public.restaurant)          AS restaurantes,
