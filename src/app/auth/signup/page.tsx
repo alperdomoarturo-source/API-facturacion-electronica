@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [restaurantName, setRestaurantName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -18,35 +19,22 @@ export default function SignupPage() {
     setError('')
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      // El trigger handle_new_user de la base crea el restaurante y el único
+      // perfil (rol ADMIN). Aquí no se inserta ningún perfil.
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName,
+            restaurant_name: restaurantName,
           },
         },
       })
 
       if (error) throw error
 
-      // Create profile entry
-      if (data.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            user_id: data.user.id,
-            role: 'CASHIER',
-            full_name: fullName,
-          })
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError)
-        }
-      }
-
-      router.push('/auth/login?message=Registro exitoso. Por favor inicia sesión.')
+      router.push('/auth/login?message=Cuenta de administrador creada. Por favor inicia sesión.')
     } catch (error: any) {
       setError(error.message || 'Error al registrarse')
     } finally {
@@ -62,7 +50,7 @@ export default function SignupPage() {
             API Software
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Registro de usuario
+            Crea la cuenta administrador de tu restaurante
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSignup}>
@@ -72,6 +60,21 @@ export default function SignupPage() {
             </div>
           )}
           <div className="rounded-md shadow-sm -space-y-px">
+            <div>
+              <label htmlFor="restaurant-name" className="sr-only">
+                Nombre del negocio
+              </label>
+              <input
+                id="restaurant-name"
+                name="restaurant-name"
+                type="text"
+                required
+                value={restaurantName}
+                onChange={(e) => setRestaurantName(e.target.value)}
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                placeholder="Nombre del negocio"
+              />
+            </div>
             <div>
               <label htmlFor="full-name" className="sr-only">
                 Nombre completo
@@ -83,7 +86,7 @@ export default function SignupPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
                 placeholder="Nombre completo"
               />
             </div>

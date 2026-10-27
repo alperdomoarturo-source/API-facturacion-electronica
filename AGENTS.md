@@ -23,9 +23,14 @@ API Software is a complete restaurant management SaaS application for Colombian 
 - React Hook Form + Zod
 
 ## Database Schema
-- Located in `supabase/schema.sql`
+- Base schema in `supabase/schema.sql`
+- Multi-tenant migration in `supabase/migrations/0001_multi_tenant.sql` (must run on every
+  existing database: adds `restaurant_id` + tenant RLS + `handle_new_user` trigger)
 - 23 tables with Row Level Security (RLS)
-- Single restaurant architecture (no multi-tenant)
+- Multi-tenant: every account (restaurant) only sees its own data. The tenant is resolved by
+  `public.current_restaurant_id()` (from `profiles.restaurant_id`) and used both as the column
+  DEFAULT and inside the RLS policies, so services keep inserting without passing the tenant.
+- Uniqueness is per account (`restaurant_id, document_number`, `restaurant_id, invoice_number`, ...)
 
 ## Key Services
 All services are in `src/services/`:
@@ -35,8 +40,10 @@ All services are in `src/services/`:
 - dianService, reportService, accountingService
 
 ## Roles
-- ADMIN: Full access to all modules
-- CASHIER: POS, Sales, Customers, Cash only
+- ADMIN: Full access to all modules. This is the account created on signup, together with its
+  own `restaurant` row and `electronic_invoicing_config` (trigger `on_auth_user_created`).
+- CASHIER: POS, Sales, Customers, Cash only. Created manually in Supabase for now (no UI).
+- While the user has an open `cash_registers` row, the sidebar only shows POS and Caja.
 
 ## Important Files
 - `supabase/schema.sql` - Database schema
@@ -48,10 +55,13 @@ All services are in `src/services/`:
 ## Setup Instructions
 1. Create Supabase project
 2. Run `supabase/schema.sql` in SQL Editor
-3. Run `supabase/seed.sql` for test data
-4. Configure `.env.local` with Supabase credentials
-5. Run `npm run dev`
-6. Register first user and change role to ADMIN in Supabase
+3. Run `supabase/migrations/0001_multi_tenant.sql` in SQL Editor
+4. Run `supabase/seed.sql` only for local demo data (it inserts rows without a tenant, so the
+   app will not show them once RLS is on)
+5. Configure `.env.local` with Supabase credentials
+6. Run `npm run dev`
+7. Register at `/auth/signup`: the signup creates one ADMIN account plus its restaurant. No manual
+   role change in Supabase is needed.
 
 ## Deployment
 Target: Vercel

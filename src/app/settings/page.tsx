@@ -42,6 +42,10 @@ export default function SettingsPage() {
     setSaving(true)
     setMessage('')
     try {
+      if (!formData.id) {
+        throw new Error('No se encontró el restaurante de esta cuenta.')
+      }
+
       const payload = {
         name: formData.name,
         nit: formData.nit,
@@ -51,10 +55,10 @@ export default function SettingsPage() {
         city: formData.city,
         updated_at: new Date().toISOString(),
       }
-      const query = formData.id
-        ? supabase.from('restaurant').update(payload).eq('id', formData.id)
-        : supabase.from('restaurant').insert(payload)
-      const { error } = await query
+      const { error } = await supabase
+        .from('restaurant')
+        .update(payload)
+        .eq('id', formData.id)
       if (error) throw error
       setMessage('Configuración guardada')
     } catch (err: any) {

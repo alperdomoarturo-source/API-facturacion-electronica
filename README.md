@@ -4,7 +4,7 @@ Sistema integral de administración para restaurantes con POS, facturación elec
 
 ## Características
 
-- **POS**: Punto de venta con carrito de compras
+- **POS**: Punto de venta con carrito de compras, efectivo recibido y cálculo de devuelta
 - **Menú**: Gestión de productos y categorías
 - **Inventario**: Control de ingredientes con alertas de stock bajo
 - **Recetas**: Cálculo automático de costos de producción
@@ -43,7 +43,13 @@ npm install
 1. Crear un proyecto en [Supabase](https://supabase.com)
 2. Ir al SQL Editor en Supabase
 3. Ejecutar el archivo `supabase/schema.sql` para crear las tablas
-4. Ejecutar el archivo `supabase/seed.sql` para insertar datos de prueba
+4. Ejecutar el archivo `supabase/migrations/0001_multi_tenant.sql` (aislamiento por cuenta)
+5. `supabase/seed.sql` es opcional y solo para pruebas locales: inserta filas sin cuenta
+   asociada, así que con el RLS activo la aplicación no las muestra
+
+> Si la base de datos ya está en producción, basta con ejecutar
+> `supabase/migrations/0001_multi_tenant.sql`. Es idempotente, conserva las cuentas de
+> usuario y **elimina los datos de prueba** (productos, clientes, ventas, caja, compras).
 
 ### 3. Configurar variables de entorno
 
@@ -58,14 +64,14 @@ SUPABASE_SERVICE_ROLE_KEY=tu_supabase_service_role_key
 Obtener estas credenciales desde tu proyecto de Supabase:
 - Project Settings > API
 
-### 4. Crear el primer usuario administrador
+### 4. Crear la cuenta administrador
 
 1. Ejecutar la aplicación: `npm run dev`
-2. Ir a `http://localhost:3000/auth/login`
-3. Registrarse con un correo y contraseña
-4. El usuario se creará con rol CASHIER por defecto
-5. Ir a Supabase > Table Editor > profiles
-6. Cambiar el rol del usuario a 'ADMIN'
+2. Ir a `http://localhost:3000/auth/signup`
+3. Completar nombre del negocio, nombre, correo y contraseña
+4. El trigger `handle_new_user` de la base crea el restaurante, la configuración de
+   facturación y **un único perfil con rol ADMIN**. Ya no hay que ajustar el rol a mano en
+   Supabase ni existe un perfil de cajero automático.
 
 ## Estructura del Proyecto
 
@@ -134,7 +140,8 @@ npm run lint
 
 ## Seguridad
 
-- **Row Level Security (RLS)**: Implementado en todas las tablas
+- **Row Level Security (RLS)**: Implementado en todas las tablas, filtrando por
+  `restaurant_id = public.current_restaurant_id()` (la cuenta del usuario autenticado)
 - **Roles**: ADMIN (acceso completo) y CAJERO (acceso limitado)
 - **Autenticación**: Supabase Auth con sesión segura
 - **Permisos**: Validados tanto en frontend como en backend
@@ -184,7 +191,12 @@ El archivo `supabase/seed.sql` incluye:
 
 ## Notas Importantes
 
-- La aplicación es para un solo restaurante (no multi-tenant)
+- Cada cuenta (restaurante) trabaja con su propia información: el aislamiento se resuelve en la
+  base de datos con la columna `restaurant_id` y las políticas RLS, de modo que ninguna cuenta
+  ve los productos, clientes, ventas ni cajas de otra.
+- Al registrarse se crea una sola cuenta, con rol ADMIN y su propio restaurante.
+- Mientras haya una caja abierta, el menú lateral solo muestra POS y Caja; al cerrarla vuelven
+  todas las opciones.
 - Los Cajeros no pueden modificar precios, inventario, recetas o configuración
 - Las facturas electrónicas requieren configuración previa del proveedor tecnológico
 - El cierre de caja no puede modificarse una vez confirmado
