@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { notifyCashRegisterChange } from '@/hooks/useCashRegister'
 import { cashService } from '@/services/cashService'
 import { CashRegister, CashMovement } from '@/types'
 import { DollarSign, TrendingUp, TrendingDown, ArrowUpCircle, ArrowDownCircle, Clock, User } from 'lucide-react'
@@ -53,6 +54,7 @@ export default function CashPage() {
       await cashService.openCashRegister(profile?.user_id || '', openingAmount)
       setShowOpenModal(false)
       setOpeningAmount(0)
+      notifyCashRegisterChange()
       fetchData()
     } catch (error: any) {
       alert(error.message || 'Error al abrir caja')
@@ -65,6 +67,7 @@ export default function CashPage() {
       await cashService.closeCashRegister(openRegister.id, closingAmount, profile?.user_id || '')
       setShowCloseModal(false)
       setClosingAmount(0)
+      notifyCashRegisterChange()
       fetchData()
     } catch (error: any) {
       alert(error.message || 'Error al cerrar caja')

@@ -46,9 +46,17 @@ export default function LoginPage() {
         .eq('user_id', data.user.id)
         .maybeSingle()
 
+      const { data: openRegister } = await supabase
+        .from('cash_registers')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .eq('status', 'open')
+        .maybeSingle()
+
       setMessage('¡Login exitoso! Redirigiendo...')
 
-      const destination = profile?.role === 'CASHIER' ? '/pos' : '/dashboard'
+      const destination =
+        openRegister || profile?.role === 'CASHIER' ? '/pos' : '/dashboard'
       window.location.assign(destination)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error inesperado al iniciar sesión'

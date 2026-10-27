@@ -25,7 +25,14 @@ export default async function Home() {
     .eq('user_id', user.id)
     .maybeSingle()
 
-  if (profile?.role === 'CASHIER') {
+  const { data: openRegister } = await supabase
+    .from('cash_registers')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'open')
+    .maybeSingle()
+
+  if (openRegister || profile?.role === 'CASHIER') {
     redirect('/pos')
   }
 

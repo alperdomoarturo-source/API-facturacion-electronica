@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import { useOpenCashRegister } from '@/hooks/useCashRegister'
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -23,7 +24,8 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { profile, isAdmin, isCashier } = useAuth()
+  const { user, profile, isAdmin, isCashier } = useAuth()
+  const { openRegister } = useOpenCashRegister(user?.id)
 
   const handleLogout = async () => {
     const { supabase } = await import('@/supabase/client')
@@ -59,7 +61,20 @@ export default function Sidebar() {
     { href: '/cash', icon: DollarSign, label: 'Caja' },
   ]
 
-  const menuItems = isAdmin ? adminMenuItems : isCashier ? cashierMenuItems : []
+  // Con la caja abierta el negocio está operando: solo se muestra el POS y la
+  // Caja (necesaria para cerrarla). El menú completo vuelve al cerrar.
+  const openRegisterMenuItems = [
+    { href: '/pos', icon: ShoppingCart, label: 'POS' },
+    { href: '/cash', icon: DollarSign, label: 'Caja' },
+  ]
+
+  const menuItems = openRegister
+    ? openRegisterMenuItems
+    : isAdmin
+      ? adminMenuItems
+      : isCashier
+        ? cashierMenuItems
+        : []
 
   return (
     <div className="w-64 bg-gray-900 text-white min-h-screen flex flex-col">
@@ -68,6 +83,12 @@ export default function Sidebar() {
         <p className="text-gray-400 text-sm mt-1">
           {profile?.role === 'ADMIN' ? 'Administrador' : 'Cajero'}
         </p>
+        {openRegister && (
+          <span className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-900 text-green-200 text-xs font-medium">
+            <DollarSign className="w-3 h-3" />
+            Caja abierta
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 p-4 space-y-2">
