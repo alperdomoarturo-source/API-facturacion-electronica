@@ -8,7 +8,18 @@ import { salesService } from '@/services/salesService'
 import { invoiceService } from '@/services/invoiceService'
 import { cashService } from '@/services/cashService'
 import { CartItem, Product, Customer, Category, Sale } from '@/types'
-import { ShoppingCart, Search, Plus, Minus, CreditCard, DollarSign, Smartphone, FileText } from 'lucide-react'
+import { ShoppingCart, Search, Plus, Minus, CreditCard, DollarSign, Smartphone, FileText, X } from 'lucide-react'
+
+const PAYMENT_LABELS: Record<Sale['payment_method'], string> = {
+  cash: 'Efectivo',
+  debit_card: 'Tarjeta débito',
+  credit_card: 'Tarjeta crédito',
+  transfer: 'Transferencia',
+  nequi: 'Nequi',
+  other: 'Otro',
+}
+
+const BILL_DENOMINATIONS = [1000, 2000, 5000, 10000, 20000, 50000, 100000]
 
 export default function POSPage() {
   const { isAdmin, isCashier, user, loading: authLoading } = useAuth()
@@ -23,6 +34,11 @@ export default function POSPage() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [checkout, setCheckout] = useState<{
+    method: Sale['payment_method']
+    generateInvoice: boolean
+  } | null>(null)
+  const [received, setReceived] = useState(0)
 
   useEffect(() => {
     const loadCatalog = async () => {
@@ -105,10 +121,11 @@ export default function POSPage() {
     }).format(value)
   }
 
-  const handleCheckout = async (
-    paymentMethod: Sale['payment_method'],
-    generateInvoice: boolean
-  ) => {
+  const changeDue = Math.max(received - cartGrandTotal, 0)
+  const missingAmount = Math.max(cartGrandTotal - received, 0)
+  const isCashCheckout = checkout?.method === 'cash'
+
+  const openCheckout = (method: Sale['payment_method'], generateInvoice: boolean) => {
     if (cart.length === 0) {
       setMessage({ type: 'error', text: 'Agrega productos al carrito antes de cobrar.' })
       return
@@ -119,15 +136,30 @@ export default function POSPage() {
       return
     }
 
+    setReceived(0)
+    setMessage(null)
+    setCheckout({ method, generateInvoice })
+  }
+
+  const handleCheckout = async () => {
+    if (!checkout || !user || cart.length === 0) return
+
+    const paymentMethod = checkout.method
+    const generateInvoice = checkout.generateInvoice
+
     setProcessing(true)
     setMessage(null)
 
     try {
       let customer = selectedCustomer
       if (generateInvoice && !customer) {
-        customer = await customerService.findOrCreateWalkInCustomer()
-        setSelectedCustomer(customer)
-        setCustomerSearch(customer.name)
+        const walkIn = await customerService.findOrCreateWalkInCustomer()
+        if (!walkIn) {
+          throw new Error('No se pudo crear el cliente de consumo final.')
+        }
+        customer = walkIn
+        setSelectedCustomer(walkIn)
+        setCustomerSearch(walkIn.name)
       }
 
       let openRegister = null
@@ -152,12 +184,28 @@ export default function POSPage() {
         await invoiceService.createInvoice(sale.id, customer.id, user.id)
       }
 
+      const change = Math.max(received - Number(sale.total), 0)
+
+      if (paymentMethod === 'cash' && received > 0) {
+        // El dinero que queda en el cajón es el total de la venta; la devuelta
+        // se guarda en la referencia del pago para poder auditarla.
+        salesService
+          .recordPayment(
+            sale.id,
+            Number(sale.total),
+            paymentMethod,
+            `Recibido ${formatCurrency(received)} · Devuelta ${formatCurrency(change)}`
+          )
+          .catch((error) => console.error('Error registrando el pago:', error))
+      }
+
       setCart([])
+      setCheckout(null)
       setMessage({
         type: 'success',
-        text: generateInvoice
-          ? `Venta registrada y factura generada (${formatCurrency(sale.total)}).`
-          : `Venta registrada (${formatCurrency(sale.total)}).`,
+        text: `${generateInvoice ? 'Venta registrada y factura generada' : 'Venta registrada'} por ${formatCurrency(
+          Number(sale.total)
+        )}${paymentMethod === 'cash' && received > 0 ? ` · Devuelta ${formatCurrency(change)}` : ''}.`,
       })
     } catch (error: any) {
       console.error('Error processing sale:', error)
@@ -382,7 +430,7 @@ export default function POSPage() {
           <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               disabled={processing}
-              onClick={() => handleCheckout('cash', false)}
+              onClick={() => openCheckout('cash', false)}
               className="flex items-center justify-center space-x-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
             >
               <DollarSign className="w-5 h-5" />
@@ -390,7 +438,7 @@ export default function POSPage() {
             </button>
             <button
               disabled={processing}
-              onClick={() => handleCheckout('credit_card', false)}
+              onClick={() => openCheckout('credit_card', false)}
               className="flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
               <CreditCard className="w-5 h-5" />
@@ -398,7 +446,7 @@ export default function POSPage() {
             </button>
             <button
               disabled={processing}
-              onClick={() => handleCheckout('nequi', false)}
+              onClick={() => openCheckout('nequi', false)}
               className="flex items-center justify-center space-x-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
             >
               <Smartphone className="w-5 h-5" />
@@ -406,7 +454,7 @@ export default function POSPage() {
             </button>
             <button
               disabled={processing}
-              onClick={() => handleCheckout('cash', true)}
+              onClick={() => openCheckout('cash', true)}
               className="flex items-center justify-center space-x-2 px-4 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
             >
               <FileText className="w-5 h-5" />
@@ -415,6 +463,137 @@ export default function POSPage() {
           </div>
         </div>
       </div>
+
+      {checkout && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="p-5 border-b flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Cobrar {formatCurrency(cartGrandTotal)}
+                </h2>
+                <p className="text-sm text-gray-500">
+                  {PAYMENT_LABELS[checkout.method]}
+                  {checkout.generateInvoice ? ' · Con factura' : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setCheckout(null)}
+                disabled={processing}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded disabled:opacity-50"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {isCashCheckout ? (
+                <>
+                  <div>
+                    <label
+                      htmlFor="received-cash"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Efectivo recibido
+                    </label>
+                    <input
+                      id="received-cash"
+                      type="number"
+                      min="0"
+                      step="50"
+                      autoFocus
+                      value={received === 0 ? '' : received}
+                      onChange={(e) => setReceived(Math.max(Number(e.target.value), 0))}
+                      className="w-full px-3 py-3 text-xl font-bold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setReceived(cartGrandTotal)}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    >
+                      Exacto
+                    </button>
+                    {BILL_DENOMINATIONS.map((bill) => (
+                      <button
+                        key={bill}
+                        onClick={() => setReceived((prev) => prev + bill)}
+                        className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      >
+                        +{formatCurrency(bill)}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setReceived(0)}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-red-600 hover:bg-gray-200"
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+
+                  <div
+                    className={`p-4 rounded-lg ${
+                      received >= cartGrandTotal ? 'bg-green-50' : 'bg-red-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-700">
+                        {received >= cartGrandTotal ? 'Devuelta' : 'Falta'}
+                      </span>
+                      <span
+                        className={`text-2xl font-bold ${
+                          received >= cartGrandTotal ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {formatCurrency(received >= cartGrandTotal ? changeDue : missingAmount)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 bg-gray-50 rounded-lg space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total a cobrar</span>
+                    <span className="font-bold">{formatCurrency(cartGrandTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Método</span>
+                    <span className="font-bold">{PAYMENT_LABELS[checkout.method]}</span>
+                  </div>
+                </div>
+              )}
+
+              {message?.type === 'error' && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                  {message.text}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  onClick={() => setCheckout(null)}
+                  disabled={processing}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCheckout}
+                  disabled={processing || (isCashCheckout && received < cartGrandTotal)}
+                  className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing
+                    ? 'Procesando...'
+                    : `Cobrar ${formatCurrency(cartGrandTotal)}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

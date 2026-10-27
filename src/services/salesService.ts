@@ -121,6 +121,27 @@ export const salesService = {
     return sale
   },
 
+  async recordPayment(
+    saleId: string,
+    amount: number,
+    paymentMethod: Sale['payment_method'],
+    reference?: string
+  ) {
+    const { data, error } = await supabase
+      .from('payments')
+      .insert({
+        sale_id: saleId,
+        amount,
+        payment_method: paymentMethod,
+        reference,
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
   async cancelSale(id: string, userId: string) {
     const { error } = await supabase
       .from('sales')
