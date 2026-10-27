@@ -195,6 +195,9 @@ El archivo `supabase/seed.sql` incluye:
   base de datos con la columna `restaurant_id` y las políticas RLS, de modo que ninguna cuenta
   ve los productos, clientes, ventas ni cajas de otra.
 - Al registrarse se crea una sola cuenta, con rol ADMIN y su propio restaurante.
+- El proyecto de Supabase debe tener **Authentication → Providers → Email → "Confirm email"
+  apagado** (o un SMTP propio configurado). Con la confirmación activa y el correo de Supabase por
+  defecto, el registro nuevo no puede iniciar sesión hasta confirmar el enlace.
 - Mientras haya una caja abierta, el menú lateral solo muestra POS y Caja; al cerrarla vuelven
   todas las opciones.
 - Los Cajeros no pueden modificar precios, inventario, recetas o configuración

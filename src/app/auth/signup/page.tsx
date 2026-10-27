@@ -2,10 +2,8 @@
 
 import { useState } from 'react'
 import { supabase } from '@/supabase/client'
-import { useRouter } from 'next/navigation'
 
 export default function SignupPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -43,7 +41,8 @@ export default function SignupPage() {
         return
       }
 
-      router.push('/auth/login?message=Cuenta de administrador creada. Por favor inicia sesión.')
+      // Con la confirmación apagada la cuenta queda autenticada: entra directo.
+      window.location.assign('/dashboard')
     } catch (error: any) {
       setError(error.message || 'Error al registrarse')
     } finally {
