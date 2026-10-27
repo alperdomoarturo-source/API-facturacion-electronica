@@ -21,7 +21,7 @@ export default function SignupPage() {
     try {
       // El trigger handle_new_user de la base crea el restaurante y el único
       // perfil (rol ADMIN). Aquí no se inserta ningún perfil.
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -33,6 +33,15 @@ export default function SignupPage() {
       })
 
       if (error) throw error
+
+      // Sin sesión inmediata significa que Supabase pidió confirmar el correo:
+      // iniciar sesión antes de confirmar da "Invalid login credentials".
+      if (data.user && !data.session) {
+        setError(
+          'Cuenta creada. Revisa tu correo y confirma el enlace antes de iniciar sesión.'
+        )
+        return
+      }
 
       router.push('/auth/login?message=Cuenta de administrador creada. Por favor inicia sesión.')
     } catch (error: any) {
