@@ -124,13 +124,11 @@ export default function DashboardPage() {
           title="Ventas del día"
           value={formatCurrency(stats.todaySales)}
           icon={DollarSign}
-          trend={{ value: 12, isPositive: true }}
         />
         <StatCard
           title="Ventas del mes"
           value={formatCurrency(stats.monthSales)}
           icon={TrendingUp}
-          trend={{ value: 8, isPositive: true }}
         />
         <StatCard
           title="Facturas generadas"
@@ -161,7 +159,6 @@ export default function DashboardPage() {
           title="Utilidad estimada"
           value={formatCurrency(stats.estimatedProfit)}
           icon={TrendingUp}
-          trend={{ value: 15, isPositive: stats.estimatedProfit >= 0 }}
         />
       </div>
 
