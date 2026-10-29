@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 
 export default function DashboardPage() {
-  const { isAdmin, loading: authLoading } = useAuth()
+  const { user, profile, profileError, isAdmin, loading: authLoading } = useAuth()
   const [stats, setStats] = useState({
     todaySales: 0,
     monthSales: 0,
@@ -91,7 +91,21 @@ export default function DashboardPage() {
     return (
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          Acceso denegado. Solo los administradores pueden ver el dashboard.
+          {profile ? (
+            'Acceso denegado. Solo los administradores pueden ver el dashboard.'
+          ) : (
+            <>
+              <p className="font-semibold">
+                No se encontró tu perfil de administrador, así que la app no te asigna ningún rol.
+              </p>
+              <p className="mt-2 text-sm">
+                Esta cuenta ({user?.email}) no tiene una fila legible en la tabla <code>profiles</code> con
+                <code> user_id</code> igual a su identificador de usuario:
+              </p>
+              <p className="mt-2 font-mono text-sm break-all">{user?.id}</p>
+              {profileError && <p className="mt-2 text-sm">Detalle: {profileError}</p>}
+            </>
+          )}
         </div>
       </div>
     )

@@ -24,7 +24,7 @@ import {
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { user, profile, isAdmin, isCashier } = useAuth()
+  const { user, profile, isAdmin, isCashier, loading } = useAuth()
   const { openRegister } = useOpenCashRegister(user?.id)
 
   const handleLogout = async () => {
@@ -81,7 +81,13 @@ export default function Sidebar() {
       <div className="p-6 border-b border-gray-800">
         <h1 className="text-2xl font-bold">API Software</h1>
         <p className="text-gray-400 text-sm mt-1">
-          {profile?.role === 'ADMIN' ? 'Administrador' : 'Cajero'}
+          {loading
+            ? 'Cargando...'
+            : profile
+              ? profile.role === 'ADMIN'
+                ? 'Administrador'
+                : 'Cajero'
+              : 'Perfil no encontrado'}
         </p>
         {openRegister && (
           <span className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-900 text-green-200 text-xs font-medium">
